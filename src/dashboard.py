@@ -88,13 +88,17 @@ def items(review: str = "all", region: str = "all", q_text: str = "",
                 caps = json.loads((pkg / "captions.json").read_text())
             except Exception:
                 caps = {}
+        yt_title = caps.get("youtube", {}).get("title", "")
         result.append({
-            "id": it["id"], "name": it["product_name"], "channel": it["channel"],
+            "id": it["id"], "name": it["product_name"],
+            "display_name": it["product_name"] or yt_title or None,
+            "channel": it["channel"],
             "region": it["region"], "status": it["status"],
             "review": it["review"] or "pending",
             "product_url": it["product_url"],
             "created": it["created_at"],
             "has_video": pkg is not None and (pkg / "video.mp4").exists(),
+            "has_thumb": pkg is not None and (pkg / "thumb.jpg").exists(),
             "yt_title": caps.get("youtube", {}).get("title", ""),
             "captions": caps,
         })
@@ -112,6 +116,19 @@ def media(item_id: int, _: str = Depends(auth)):
     if not video or not video.exists():
         raise HTTPException(404, "video tidak ada")
     return FileResponse(video, media_type="video/mp4")
+
+
+@app.get("/thumb/{item_id}")
+def thumb(item_id: int, _: str = Depends(auth)):
+    c = conn()
+    it = c.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not it:
+        raise HTTPException(404, "item tidak ada")
+    pkg = package_dir(item_id, it["slug"])
+    img = pkg / "thumb.jpg" if pkg else None
+    if not img or not img.exists():
+        raise HTTPException(404, "thumbnail tidak ada")
+    return FileResponse(img, media_type="image/jpeg")
 
 
 @app.post("/api/items/{item_id}/review")
@@ -133,7 +150,7 @@ PAGE = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#17130c;--ink2:#241d13;--paper:#faf6ee;--surface:#fffdf8;--line:#e6dcc8;
+:root{--ink:#17130c;--ink2:#241d13;--paper:#faf9f6;--surface:#ffffff;--line:#e8e4dc;
 --txt:#211d16;--mut:#7a7263;--acc:#e8490f;--acc-soft:#fdeee6;--ok:#177245;--ok-soft:#e3f2e9;
 --bad:#c0362c;--bad-soft:#fbeae8;--warn:#a86a12;--warn-soft:#fbf0da;--rad:10px}
 *{box-sizing:border-box} html,body{height:100%}
@@ -165,10 +182,12 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--paper);col
 .search{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font:400 13.5px Inter}
 .search:focus{outline:2px solid var(--acc);outline-offset:-1px}
 .qcount{font-size:12px;color:var(--mut);margin-top:7px}
-.list{overflow:auto;flex:1}
-.row{display:grid;grid-template-columns:86px 1fr;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;background:transparent}
-.row:hover{background:#f3ecdc}.row.sel{background:var(--surface);box-shadow:inset 3px 0 0 var(--acc)}
-.row video{width:86px;height:64px;object-fit:cover;border-radius:6px;background:#000}
+.list{overflow:auto;flex:1;padding:10px;display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:96px 1fr;gap:11px;padding:9px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--surface)}
+.row:hover{border-color:#d8d0bf}.row.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.row .thumb{width:96px;height:72px;object-fit:cover;border-radius:8px;background:#ece7da;display:block}
+.row .thumb.ph{display:flex;align-items:center;justify-content:center;color:#b3a88f;font-size:19px;background:#f0ebdf}
+.row video{width:96px;height:72px;object-fit:cover;border-radius:8px;background:#000}
 .rname{font-weight:600;font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .rmeta{font-size:11.5px;color:var(--mut);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ryt{font-size:12px;color:#57534a;margin-top:3px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
@@ -187,8 +206,8 @@ body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--paper);col
 .dhead .mono{font-family:"IBM Plex Mono";font-size:12.5px;color:var(--mut)}
 h2.dname{font-family:"Space Grotesk";font-size:23px;letter-spacing:-.01em;margin:8px 0 4px;line-height:1.25}
 .dsub{color:var(--mut);font-size:13px}
-.player{margin:16px 0;background:#000;border-radius:12px;display:flex;justify-content:center}
-.player video{max-height:54vh;max-width:100%;border-radius:12px}
+.player{margin:16px 0;display:flex;justify-content:center}
+.player video{max-height:56vh;max-width:100%;border-radius:12px;box-shadow:0 10px 34px rgba(20,16,8,.22);background:#000}
 .notice{background:var(--warn-soft);border:1px solid #ecd9ae;border-radius:var(--rad);padding:10px 13px;font-size:13px;line-height:1.55;margin:12px 0}
 .linkrow{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .linkbtn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;padding:8px 13px;border-radius:8px;font-weight:500;font-size:13px}
@@ -196,12 +215,13 @@ h2.dname{font-family:"Space Grotesk";font-size:23px;letter-spacing:-.01em;margin
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:18px}
 .tab{border:0;background:none;padding:8px 12px;font:600 13px Inter;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent}
 .tab.on{color:var(--txt);border-bottom-color:var(--acc)}
-.panel{padding:13px 2px;font-size:14px;line-height:1.65;white-space:pre-wrap}
+.panel{padding:13px 2px;font-size:14px;line-height:1.65;max-width:720px}
+.panel p{margin:0 0 10px}
 .panel .ttl{font-weight:600;font-size:15px}
 .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
 .tag{font-size:12px;background:#ece7da;border-radius:99px;padding:2.5px 9px}
 .charcount{font-size:11.5px;color:var(--mut);margin-top:8px;font-family:"IBM Plex Mono"}
-.actions{position:sticky;bottom:0;background:linear-gradient(transparent,var(--paper) 26%);padding:18px 0 4px;display:flex;gap:9px;align-items:stretch}
+.actions{position:sticky;bottom:0;background:var(--paper);border-top:1px solid var(--line);padding:13px 0 6px;display:flex;gap:9px;align-items:stretch;max-width:720px}
 .abtn{flex:1;padding:12px;border-radius:10px;border:1px solid var(--line);font:600 14px Inter;cursor:pointer;background:var(--surface)}
 .abtn small{display:block;font-weight:400;font-size:11px;color:var(--mut);margin-top:1px}
 .abtn.ok{background:var(--ok);border-color:var(--ok);color:#fff}.abtn.ok small{color:#cdeeda}
@@ -280,46 +300,64 @@ async function load(){
 function renderList(){
  $('#list').innerHTML=ITEMS.map(it=>`
   <div class="row ${it.id===SEL?'sel':''}" data-id="${it.id}" onclick="pick(${it.id})">
-   ${it.has_video?`<video muted preload="metadata" src="/media/${it.id}#t=0.6"></video>`:'<div></div>'}
-   <div><div class="rname">${esc(it.name)||'(produk MY — nama belum diketahui)'}</div>
+   ${it.has_thumb?`<img class="thumb" loading="lazy" src="/thumb/${it.id}" alt="">`:it.has_video?`<video muted preload="metadata" src="/media/${it.id}#t=0.6"></video>`:'<div class="thumb ph">▶</div>'}
+   <div><div class="rname">${esc(it.display_name)||'(nama belum terdeteksi)'}</div>
    <div class="rmeta"><span>#${it.id}</span><span>${esc(it.channel)}</span>
    <span class="pill ${it.region==='MY'?'my':'id'}">${it.region||'?'}</span>
    <span class="pill ${it.review}">${it.review}</span></div>
    <div class="ryt">${esc(it.yt_title)}</div></div></div>`).join('')
   || '<p style="padding:16px;color:var(--mut)">Antrian bersih — tidak ada item yang cocok dengan filter ini.</p>';
 }
+function paras(t){var NL=String.fromCharCode(10);return String(t||'').split(NL+NL).map(function(x){return '<p>'+esc(x).split(NL).join('<br>')+'</p>'}).join('')}
 function capText(it){
  const c=it.captions||{};
- if(TAB==='youtube'){const y=c.youtube||{};return `<div class="ttl">${esc(y.title||'')}</div>\n${esc(y.description||'')}`}
- const v=c[TAB]||{};return esc(v.text||'(kosong)');
+ if(TAB==='youtube'){const y=c.youtube||{};return '<div class="ttl">'+esc(y.title||'')+'</div>'+paras(y.description||'')}
+ const v=c[TAB]||{};return paras(v.text||'(kosong)');
 }
 function renderDetail(){
  const it=ITEMS.find(i=>i.id===SEL), d=$('#detail');
- if(!it){d.innerHTML=`<div class="empty"><b>Belum ada item dipilih</b>
-  Pilih item dari antrian di kiri untuk menonton videonya dan membaca caption-nya.<br><br>
-  <span class="kbd">↓</span> <span class="kbd">↑</span> berpindah item ·
-  <span class="kbd">A</span> setujui · <span class="kbd">X</span> tolak · <span class="kbd">U</span> urungkan</div>`;return}
+ if(!it){d.innerHTML='<div class="empty"><b>Belum ada item dipilih</b>Pilih item dari antrian untuk menonton videonya dan membaca caption-nya.<br><br><span class="kbd">↓</span> <span class="kbd">↑</span> berpindah item · <span class="kbd">A</span> setujui · <span class="kbd">X</span> tolak · <span class="kbd">U</span> urungkan</div>';return}
  const idx=ITEMS.indexOf(it), c=it.captions||{};
  const tags=(c.youtube&&c.youtube.tags)||[];
- d.innerHTML=`
-  <div class="dhead"><span class="mono">ITEM #${it.id}</span>
-   <span class="pill ${it.review}">${it.review}</span>
-   <span class="pill ${it.region==='MY'?'my':'id'}">${it.region==='MY'?'Malaysia':'Indonesia'}</span>
-   <span class="mono">${esc(it.created||'')}</span></div>
-  <h2 class="dname">${esc(it.name)||'Produk Malaysia — nama belum diketahui'}</h2>
-  <div class="dsub">dari channel <b>${esc(it.channel)}</b> · status paket: ${esc(it.status)}</div>
-  ${it.has_video?`<div class="player"><video controls preload="metadata" src="/media/${it.id}"></video></div>`:''}
-  ${it.region==='MY'?`<div class="notice"><b>Item Malaysia.</b> Videonya bisa dipakai, tapi nama produk belum diketahui dan link-nya masih menunjuk Shopee MY. Item ini menunggu pemetaan link ke produk Shopee Indonesia sebelum siap posting.</div>`:''}
-  <div class="linkrow"><a class="linkbtn" href="${esc(it.product_url)}" target="_blank" rel="noopener">Buka produk di Shopee ↗</a></div>
-  <div class="tabs">${['youtube','threads','facebook','shopee'].map(t=>`<button class="tab ${TAB===t?'on':''}" onclick="setTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>
-  <div class="panel">${capText(it)}${TAB==='youtube'&&tags.length?`<div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
-  <div class="charcount">${(TAB==='youtube'?((c.youtube||{}).description||'').length:((c[TAB]||{}).text||'').length)} karakter</div></div>
-  <div class="actions">
-   <button class="abtn rj" onclick="rev('rejected')">Tolak<small>tombol X</small></button>
-   <button class="abtn" onclick="rev('pending')">Urungkan<small>tombol U</small></button>
-   <span class="pos">${idx+1} / ${ITEMS.length}</span>
-   <button class="abtn ok" onclick="rev('approved')">Setujui<small>tombol A — lanjut ke item berikutnya</small></button>
-  </div>`;
+ if(it.status!=='packaged'){
+  d.innerHTML='<div class="dhead"><span class="mono">ITEM #'+it.id+'</span>'
+  +' <span class="pill '+it.review+'">'+it.review+'</span>'
+  +' <span class="pill '+(it.region==='MY'?'my':'id')+'">'+(it.region==='MY'?'Malaysia':'Indonesia')+'</span>'
+  +' <span class="mono">'+esc(it.created||'')+'</span></div>'
+  +'<h2 class="dname">'+(esc(it.display_name)||'Nama produk belum terdeteksi')+'</h2>'
+  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
+  +'<div class="notice"><b>Paket belum dibuat.</b> Item ini sudah terunduh dan menunggu giliran caption worker (jalan tiap jam). Thumbnail, video, dan caption akan muncul di sini setelah paketnya jadi — kamu tetap bisa menyetujui atau menolaknya dari sekarang.</div>'
+  +(it.region==='MY'?'<div class="notice"><b>Item Malaysia.</b> Link-nya masih menunjuk Shopee MY dan akan menunggu pemetaan ke produk Shopee Indonesia.</div>':'')
+  +'<div class="linkrow"><a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a></div>'
+  +'<div class="actions">'
+  +'<button class="abtn rj" data-d="rejected" onclick="rev(this.dataset.d)">Tolak<small>tombol X</small></button>'
+  +'<button class="abtn" data-d="pending" onclick="rev(this.dataset.d)">Urungkan<small>tombol U</small></button>'
+  +'<span class="pos">'+(idx+1)+' / '+ITEMS.length+'</span>'
+  +'<button class="abtn ok" data-d="approved" onclick="rev(this.dataset.d)">Setujui<small>tombol A</small></button>'
+  +'</div>';
+  d.scrollTop=0; return;
+ }
+ const poster=it.has_thumb?('/thumb/'+it.id):'';
+ d.innerHTML=
+  '<div class="dhead"><span class="mono">ITEM #'+it.id+'</span>'
+  +' <span class="pill '+it.review+'">'+it.review+'</span>'
+  +' <span class="pill '+(it.region==='MY'?'my':'id')+'">'+(it.region==='MY'?'Malaysia':'Indonesia')+'</span>'
+  +' <span class="mono">'+esc(it.created||'')+'</span></div>'
+  +'<h2 class="dname">'+(esc(it.display_name)||'Nama produk belum terdeteksi')+'</h2>'
+  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
+  +(it.has_video?'<div class="player"><video controls preload="metadata" poster="'+poster+'" src="/media/'+it.id+'"></video></div>':'')
+  +(it.region==='MY'?'<div class="notice"><b>Item Malaysia.</b> Videonya bisa dipakai, tapi nama produk belum diketahui dan link-nya masih menunjuk Shopee MY. Item ini menunggu pemetaan link ke produk Shopee Indonesia sebelum siap posting.</div>':'')
+  +'<div class="linkrow"><a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a></div>'
+  +'<div class="tabs">'+['youtube','threads','facebook','shopee'].map(function(t){return '<button class="tab '+(TAB===t?'on':'')+'" data-t="'+t+'" onclick="setTab(this.dataset.t)">'+t[0].toUpperCase()+t.slice(1)+'</button>'}).join('')+'</div>'
+  +'<div class="panel">'+capText(it)
+  +(TAB==='youtube'&&tags.length?'<div class="tags">'+tags.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join('')+'</div>':'')
+  +'<div class="charcount">'+(TAB==='youtube'?((c.youtube||{}).description||'').length:((c[TAB]||{}).text||'').length)+' karakter</div></div>'
+  +'<div class="actions">'
+  +'<button class="abtn rj" data-d="rejected" onclick="rev(this.dataset.d)">Tolak<small>tombol X</small></button>'
+  +'<button class="abtn" data-d="pending" onclick="rev(this.dataset.d)">Urungkan<small>tombol U</small></button>'
+  +'<span class="pos">'+(idx+1)+' / '+ITEMS.length+'</span>'
+  +'<button class="abtn ok" data-d="approved" onclick="rev(this.dataset.d)">Setujui<small>tombol A — lanjut ke item berikutnya</small></button>'
+  +'</div>';
  d.scrollTop=0;
 }
 function pick(id){SEL=id;renderList();renderDetail()}
