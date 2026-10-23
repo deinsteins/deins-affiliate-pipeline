@@ -3,8 +3,9 @@ channels:
   - username: videopromosishopee
     enabled: true
   - username: VIDEO_AFFILIATED_SHOPE_FREE
-    enabled: false   # NOTE: links point to Shopee MALAYSIA (s.shopee.com.my);
-                     # enable only if the owner runs a Shopee MY affiliate account
+    enabled: true
+    link_region: MY        # its links point to Shopee Malaysia; videos are
+    remap_to: ID           # reused, product link is remapped to Shopee ID
   - username: shopeeracunmurah
     enabled: true
 
