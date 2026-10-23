@@ -1,16 +1,18 @@
-"""Service entrypoint: run ingest + scheduler concurrently."""
+"""Service entrypoint: Telegram ingest (backfill + live listener).
+Caption/packaging run as a separate worker step (src.worker) so ingest
+never blocks on the LLM; publishers join once platform accounts connect.
+"""
 import asyncio
 
 from .config import Settings
 from .telegram_ingest import run_ingest
-from .scheduler import run_scheduler
 
 DB = "storage/pipeline.db"
 
 
 async def main() -> None:
     settings = Settings()
-    await asyncio.gather(run_ingest(settings, DB), run_scheduler(settings, DB))
+    await run_ingest(settings, DB)
 
 
 if __name__ == "__main__":

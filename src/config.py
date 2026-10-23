@@ -1,4 +1,10 @@
 """Settings loader: secrets from .env, behaviour from config/channels.yaml."""
+
+import os as _os
+# The sandbox exports a no_proxy list with bracketed IPv6 entries ([::1])
+# that crash httpx/urllib proxy parsing — sanitise before anything else.
+_os.environ["no_proxy"] = "localhost,127.0.0.1"
+_os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 from pathlib import Path
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,3 +34,23 @@ class Settings(BaseSettings):
 def load_channels() -> dict:
     with open(ROOT / "config" / "channels.yaml") as f:
         return yaml.safe_load(f)
+
+
+import os
+from urllib.parse import urlparse
+
+
+def proxy_from_env():
+    """Telethon/httpx proxy tuple from the sandbox egress proxy env."""
+    raw = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if not raw:
+        return None
+    from python_socks import ProxyType
+    u = urlparse(raw)
+    return (ProxyType.HTTP, u.hostname, u.port, True, u.username, u.password)
+
+
+def make_client(settings: "Settings") -> "TelegramClient":
+    from telethon import TelegramClient
+    return TelegramClient(settings.telegram_session, settings.telegram_api_id,
+                          settings.telegram_api_hash, proxy=proxy_from_env())
