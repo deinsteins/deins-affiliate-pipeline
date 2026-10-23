@@ -1,0 +1,16 @@
+# Telegram channels to watch for affiliate product videos.
+channels:
+  - username: contoh_channel_produk   # TODO: replace with real channels
+    enabled: true
+
+platforms:
+  youtube:  { enabled: true,  privacy: public }   # shorts
+  facebook: { enabled: true }                    # page reels
+  threads:  { enabled: true }
+  shopee:   { enabled: true, mode: package_only } # manual final tap (no API)
+
+captions:
+  language: id
+  style: "santai, persuasif, tanpa klaim berlebihan"
+  max_hashtags: 8
+  call_to_action: "Link produk ada di deskripsi ya!"

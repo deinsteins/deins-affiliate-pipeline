@@ -1,0 +1,11 @@
+.env
+*.session
+token*.json
+credentials*.json
+storage/downloads/*
+storage/ready/*
+storage/posted/*
+!storage/**/.gitkeep
+__pycache__/
+.venv/
+*.db
