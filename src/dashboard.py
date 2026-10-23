@@ -393,6 +393,14 @@ stats(); load();
 """
 
 
+@app.get("/mock/{name}", response_class=HTMLResponse)
+def mock(name: str, _: str = Depends(auth)):
+    f = ROOT / "src" / "mocks" / f"{name}.html"
+    if name not in ("a", "b", "c") or not f.exists():
+        raise HTTPException(404, "mock tidak ada")
+    return f.read_text()
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(_: str = Depends(auth)):
     return PAGE

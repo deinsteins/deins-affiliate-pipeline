@@ -1,0 +1,101 @@
+<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C — Padat Slate</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f4f6f8;color:#0f172a;font-size:13px}
+.app{display:grid;grid-template-columns:216px 430px 1fr;height:100vh}
+.side{background:#fff;border-right:1px solid #e2e8f0;padding:16px 14px;display:flex;flex-direction:column;gap:18px}
+.brand{font-weight:700;font-size:14.5px}.brand span{color:#2563eb}
+.brand .s{font-weight:400;font-size:11.5px;color:#64748b}
+.lbl{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px}
+table{width:100%;border-collapse:collapse}
+td{padding:4.5px 2px;border-bottom:1px solid #f1f5f9;color:#475569}
+td:last-child{text-align:right;font-weight:600;color:#0f172a;font-variant-numeric:tabular-nums}
+.fbtn{display:flex;justify-content:space-between;width:100%;background:none;border:0;padding:6px 8px;border-radius:6px;font:500 12.5px Inter;color:#334155;cursor:pointer;text-align:left}
+.fbtn:hover{background:#f1f5f9}.fbtn.on{background:#2563eb;color:#fff}
+.fbtn .c{font-variant-numeric:tabular-nums;opacity:.7}
+.foot{margin-top:auto;font-size:11.5px;color:#94a3b8;line-height:1.6}
+.foot i{display:inline-block;width:7px;height:7px;border-radius:99px;background:#22c55e;margin-right:5px}
+.queue{border-right:1px solid #e2e8f0;background:#fbfcfd;display:flex;flex-direction:column;min-height:0}
+.qh{padding:12px;border-bottom:1px solid #e2e8f0;background:#fff}
+.qh input{width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:7px;font:400 12.5px Inter}
+.list{overflow:auto;flex:1}
+.tr{display:grid;grid-template-columns:64px 1fr auto;gap:9px;padding:8px 11px;border-bottom:1px solid #eef2f6;cursor:pointer;align-items:center}
+.tr:hover{background:#f1f5f9}.tr.sel{background:#eff6ff;box-shadow:inset 2.5px 0 0 #2563eb}
+.tr img{width:64px;height:48px;object-fit:cover;border-radius:5px;background:#e2e8f0}
+.tr .ph{width:64px;height:48px;border-radius:5px;background:#e8edf3;color:#94a3b8;display:flex;align-items:center;justify-content:center}
+.tr .nm{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270px}
+.tr .mt{font-size:11px;color:#64748b;margin-top:2px}
+.st{font-size:10px;font-weight:700;padding:2.5px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.04em}
+.st.pending{background:#fef9c3;color:#854d0e}.st.approved{background:#dcfce7;color:#166534}.st.rejected{background:#fee2e2;color:#991b1b}
+.detail{overflow:auto;padding:18px 22px;min-height:0}
+.detail h2{font-size:19px;margin:6px 0 3px;letter-spacing:-.01em;line-height:1.3}
+.dsub{color:#64748b;font-size:12px}
+.split{display:grid;grid-template-columns:300px 1fr;gap:20px;margin-top:14px;align-items:start}
+.split video{width:100%;border-radius:10px;background:#000;max-height:430px}
+.tabs{display:flex;gap:3px;border-bottom:1px solid #e2e8f0}
+.tab{border:0;background:none;padding:7px 11px;font:600 12.5px Inter;color:#64748b;cursor:pointer;border-bottom:2px solid transparent}
+.tab.on{color:#0f172a;border-bottom-color:#2563eb}
+.panel{padding:11px 2px;line-height:1.6;color:#334155;white-space:pre-wrap}
+.acts{display:flex;gap:8px;margin-top:16px}
+.acts button{padding:9px 18px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;font:600 13px Inter;cursor:pointer}
+.acts .ok{background:#2563eb;border-color:#2563eb;color:#fff}
+.acts .rj{color:#dc2626}
+.link{color:#2563eb;text-decoration:none;font-weight:500;font-size:12.5px}
+</style></head><body>
+<div class="app">
+ <aside class="side">
+  <div class="brand">Deins<span>·</span>Affiliate<div class="s">Pipeline konten Shopee</div></div>
+  <div><div class="lbl">Ringkasan</div><table>
+   <tr><td>Total item</td><td id="s-total">–</td></tr>
+   <tr><td>Menunggu review</td><td id="s-pend">–</td></tr>
+   <tr><td>Disetujui</td><td id="s-ok">–</td></tr>
+   <tr><td>Ditolak</td><td id="s-no">–</td></tr></table></div>
+  <nav><div class="lbl">Filter</div>
+   <button class="fbtn on">Semua <span class="c" id="c-all"></span></button>
+   <button class="fbtn">Menunggu <span class="c" id="c-pending"></span></button>
+   <button class="fbtn">Disetujui <span class="c" id="c-approved"></span></button>
+   <button class="fbtn">Malaysia <span class="c">MY</span></button></nav>
+  <div class="foot"><i></i>Ingest Telegram aktif<br>Worker caption tiap jam</div>
+ </aside>
+ <main class="queue">
+  <div class="qh"><input placeholder="Cari produk atau channel…"></div>
+  <div class="list" id="list"></div>
+ </main>
+ <section class="detail" id="detail"></section>
+</div>
+<script>
+let ITEMS=[],SEL=null;
+const s_total=document.getElementById('s-total'),s_pend=document.getElementById('s-pend'),s_ok=document.getElementById('s-ok'),s_no=document.getElementById('s-no'),c_all=document.getElementById('c-all'),c_pending=document.getElementById('c-pending'),c_approved=document.getElementById('c-approved'),list=document.getElementById('list'),detail=document.getElementById('detail');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function renderList(){
+ list.innerHTML=ITEMS.map(it=>`<div class="tr ${it.id===SEL?'sel':''}" onclick="pick(${it.id})">
+  ${it.has_thumb?`<img src="/thumb/${it.id}">`:`<div class="ph">▶</div>`}
+  <div><div class="nm">${esc(it.display_name)||'(nama belum terdeteksi)'}</div>
+  <div class="mt">#${it.id} · ${esc(it.channel)} · ${it.region||''}</div></div>
+  <span class="st ${it.review}">${it.review}</span></div>`).join('');
+}
+function renderDetail(){
+ const it=ITEMS.find(i=>i.id===SEL); if(!it)return;
+ const y=(it.captions||{}).youtube||{};
+ detail.innerHTML=`<div class="dsub">ITEM #${it.id} · ${esc(it.created||'')}</div>
+ <h2>${esc(it.display_name)||'Nama produk belum terdeteksi'}</h2>
+ <div class="dsub">channel <b>${esc(it.channel)}</b> · region ${it.region||'-'} · <a class="link" href="${esc(it.product_url)}" target="_blank">buka di Shopee ↗</a></div>
+ <div class="split">
+  <div>${it.has_video?`<video controls preload="metadata" poster="${it.has_thumb?'/thumb/'+it.id:''}" src="/media/${it.id}"></video>`:''}
+  <div class="acts"><button class="ok">Setujui</button><button class="rj">Tolak</button><button>Urungkan</button></div></div>
+  <div><div class="tabs"><button class="tab on">YouTube</button><button class="tab">Threads</button><button class="tab">Facebook</button><button class="tab">Shopee</button></div>
+  <div class="panel"><b>${esc(y.title||'')}</b>\n\n${esc(y.description||'')}</div></div>
+ </div>`;
+}
+function pick(id){SEL=id;renderList();renderDetail()}
+(async()=>{
+ const st=await (await fetch('/api/stats')).json();
+ s_total.textContent=st.total;s_pend.textContent=st.by_review.pending||0;
+ s_ok.textContent=st.by_review.approved||0;s_no.textContent=st.by_review.rejected||0;
+ c_all.textContent=st.total;c_pending.textContent=st.by_review.pending||0;c_approved.textContent=st.by_review.approved||0;
+ ITEMS=(await (await fetch('/api/items')).json()).filter(i=>i.status==='packaged').slice(0,14);
+ SEL=ITEMS[0]&&ITEMS[0].id; renderList(); renderDetail();
+})();
+</script></body></html>

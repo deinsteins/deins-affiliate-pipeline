@@ -1,0 +1,69 @@
+<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B — Gelap Sinematik</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:#0b0b0f;color:#f2f2f0}
+.app{display:grid;grid-template-columns:1fr 372px;height:100vh}
+.wall{overflow:auto;padding:20px 22px}
+.whead{display:flex;align-items:baseline;gap:18px;margin-bottom:16px}
+.whead h1{font-family:"Space Grotesk";font-size:21px;margin:0;letter-spacing:-.01em}
+.whead .nums{font-size:12.5px;color:#9b9ba4}
+.whead .nums b{color:#fff;font-weight:600}
+.chips{display:flex;gap:7px;margin-bottom:16px}
+.chip{border:1px solid #26262e;background:#141419;color:#c9c9cf;border-radius:99px;padding:6px 13px;font:500 12.5px Inter;cursor:pointer}
+.chip.on{background:#ff5c1f;border-color:#ff5c1f;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:14px}
+.tile{position:relative;border-radius:12px;overflow:hidden;background:#141419;cursor:pointer;border:2px solid transparent}
+.tile.sel{border-color:#ff5c1f}
+.tile img{width:100%;height:158px;object-fit:cover;display:block;opacity:.94}
+.tile .ph{height:158px;display:flex;align-items:center;justify-content:center;color:#55555f;font-size:22px;background:#17171d}
+.tile .grad{position:absolute;inset:auto 0 0 0;padding:26px 11px 10px;background:linear-gradient(transparent,rgba(0,0,0,.88))}
+.tile .nm{font-size:12.5px;font-weight:600;line-height:1.35;max-height:34px;overflow:hidden}
+.tile .mt{font-size:11px;color:#b9b9c0;margin-top:3px;display:flex;gap:6px;align-items:center}
+.dotp{width:7px;height:7px;border-radius:99px;background:#fbbf24;display:inline-block}
+.dotp.approved{background:#34d399}.dotp.rejected{background:#f87171}
+.pv{background:#101014;border-left:1px solid #232329;display:flex;flex-direction:column;overflow:auto}
+.pv .vid{background:#000;display:flex;justify-content:center}
+.pv video{max-height:46vh;max-width:100%}
+.pv .bd{padding:16px 18px}
+.pv h2{font-family:"Space Grotesk";font-size:18px;line-height:1.3;margin:0 0 5px}
+.pv .sub{font-size:12.5px;color:#9b9ba4}
+.pv .cap{font-size:13px;line-height:1.6;color:#d8d8de;white-space:pre-wrap;margin-top:12px;max-height:180px;overflow:auto}
+.pv .ttl{font-weight:600;color:#fff;font-size:13.5px;margin-top:14px}
+.pv .acts{display:flex;gap:8px;padding:14px 18px;margin-top:auto}
+.pv button{flex:1;padding:11px;border-radius:10px;border:1px solid #2c2c34;background:#17171d;color:#f2f2f0;font:600 13.5px Inter;cursor:pointer}
+.pv button.ok{background:#ff5c1f;border-color:#ff5c1f;color:#fff}
+</style></head><body>
+<div class="app">
+ <div class="wall">
+  <div class="whead"><h1>Antrian Review</h1><span class="nums" id="nums">memuat…</span></div>
+  <div class="chips"><span class="chip on">Semua</span><span class="chip">Menunggu</span><span class="chip">Disetujui</span><span class="chip">Ditolak</span><span class="chip">Malaysia</span></div>
+  <div class="grid" id="grid"></div>
+ </div>
+ <aside class="pv" id="pv"></aside>
+</div>
+<script>
+let ITEMS=[],SEL=null;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function render(){
+ grid.innerHTML=ITEMS.map(it=>`<div class="tile ${it.id===SEL?'sel':''}" onclick="pick(${it.id})">
+  ${it.has_thumb?`<img src="/thumb/${it.id}">`:`<div class="ph">▶</div>`}
+  <div class="grad"><div class="nm">${esc(it.display_name)||'(nama belum terdeteksi)'}</div>
+  <div class="mt"><span class="dotp ${it.review}"></span>#${it.id} · ${esc(it.channel)} · ${it.region||''}</div></div></div>`).join('');
+ const it=ITEMS.find(i=>i.id===SEL);
+ if(it){const y=(it.captions||{}).youtube||{};
+  pv.innerHTML=`${it.has_video?`<div class="vid"><video controls preload="metadata" poster="${it.has_thumb?'/thumb/'+it.id:''}" src="/media/${it.id}"></video></div>`:''}
+  <div class="bd"><h2>${esc(it.display_name)||'Nama produk belum terdeteksi'}</h2>
+  <div class="sub">#${it.id} · ${esc(it.channel)} · region ${it.region||'-'} · ${it.review}</div>
+  <div class="ttl">${esc(y.title||'')}</div><div class="cap">${esc(y.description||'')}</div></div>
+  <div class="acts"><button>Tolak</button><button class="ok">Setujui</button></div>`}
+}
+function pick(id){SEL=id;render()}
+(async()=>{
+ const st=await (await fetch('/api/stats')).json();
+ nums.innerHTML=`<b>${st.total}</b> item · <b>${st.by_review.pending||0}</b> menunggu review · <b>${st.by_review.approved||0}</b> disetujui`;
+ ITEMS=(await (await fetch('/api/items')).json()).filter(i=>i.status==='packaged').slice(0,12);
+ SEL=ITEMS[0]&&ITEMS[0].id; render();
+})();
+</script></body></html>

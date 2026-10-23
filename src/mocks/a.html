@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A — Terang Bersih</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f7f7f5;color:#171717}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e7e5e0;padding:14px 26px;display:flex;align-items:center;gap:26px;z-index:5}
+.logo{font-weight:800;font-size:17px;letter-spacing:-.02em}.logo span{color:#ee4d2d}
+.stats{display:flex;gap:20px;margin-left:8px}
+.stat b{font-size:16px;font-weight:700}.stat span{display:block;font-size:11px;color:#8a8a85;text-transform:uppercase;letter-spacing:.06em}
+.search{margin-left:auto;width:250px;padding:9px 12px;border:1px solid #e7e5e0;border-radius:10px;font:400 13.5px Inter;background:#fbfbfa}
+main{padding:22px 26px;max-width:1460px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:16px}
+.card{background:#fff;border:1px solid #e9e7e2;border-radius:16px;overflow:hidden;transition:box-shadow .15s}
+.card:hover{box-shadow:0 10px 28px rgba(23,23,23,.09)}
+.card img{width:100%;height:150px;object-fit:cover;display:block;background:#eee}
+.ph{height:150px;display:flex;align-items:center;justify-content:center;background:#f1efe9;color:#b9b2a2;font-size:22px}
+.cb{padding:12px 14px 14px}
+.name{font-weight:600;font-size:13.5px;line-height:1.4;height:38px;overflow:hidden}
+.meta{display:flex;gap:6px;align-items:center;margin:7px 0;font-size:11.5px;color:#8a8a85}
+.pill{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px}
+.pill.pending{background:#fef3c7;color:#92400e}.pill.approved{background:#dcfce7;color:#166534}.pill.rejected{background:#fee2e2;color:#991b1b}
+.pill.my{background:#171717;color:#fbbf24}.pill.id{background:#f1f1ee;color:#6b6b66}
+.cap{font-size:12.5px;color:#5c5c58;line-height:1.5;height:37px;overflow:hidden}
+.row{display:flex;gap:8px;margin-top:11px}
+button{flex:1;padding:8px 0;border-radius:9px;border:1px solid #e7e5e0;background:#fff;font:600 13px Inter;cursor:pointer}
+button.ok{background:#ee4d2d;border-color:#ee4d2d;color:#fff}
+</style></head><body>
+<header>
+ <div class="logo">Deins<span>·</span>Affiliate</div>
+ <div class="stats">
+  <div class="stat"><b id="s-total">–</b><span>total item</span></div>
+  <div class="stat"><b id="s-pend">–</b><span>menunggu</span></div>
+  <div class="stat"><b id="s-ok">–</b><span>disetujui</span></div>
+  <div class="stat"><b id="s-no">–</b><span>ditolak</span></div>
+ </div>
+ <input class="search" placeholder="Cari produk…">
+</header>
+<main><div class="grid" id="grid"></div></main>
+<script>
+const s_total=document.getElementById('s-total'),s_pend=document.getElementById('s-pend'),s_ok=document.getElementById('s-ok'),s_no=document.getElementById('s-no'),grid=document.getElementById('grid');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+(async()=>{
+ const st=await (await fetch('/api/stats')).json();
+ s_total.textContent=st.total; s_pend.textContent=st.by_review.pending||0;
+ s_ok.textContent=st.by_review.approved||0; s_no.textContent=st.by_review.rejected||0;
+ const items=(await (await fetch('/api/items')).json()).filter(i=>i.status==='packaged').slice(0,12);
+ grid.innerHTML=items.map(it=>`<div class="card">
+  ${it.has_thumb?`<img src="/thumb/${it.id}">`:`<div class="ph">▶</div>`}
+  <div class="cb"><div class="name">${esc(it.display_name)||'(nama belum terdeteksi)'}</div>
+  <div class="meta"><span>#${it.id}</span><span>${esc(it.channel)}</span>
+  <span class="pill ${it.region==='MY'?'my':'id'}">${it.region||''}</span>
+  <span class="pill ${it.review}">${it.review}</span></div>
+  <div class="cap">${esc(it.yt_title||'')}</div>
+  <div class="row"><button class="ok">Setujui</button><button>Tolak</button></div>
+  </div></div>`).join('');
+})();
+</script></body></html>
