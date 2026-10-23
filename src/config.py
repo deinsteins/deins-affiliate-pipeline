@@ -1,7 +1,7 @@
 """Settings loader: secrets from .env, behaviour from config/channels.yaml."""
 from pathlib import Path
 import yaml
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -22,8 +22,7 @@ class Settings(BaseSettings):
     notify_bot_token: str = ""
     notify_chat_id: str = ""
 
-    class Config:
-        env_file = ROOT / ".env"
+    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
 
 def load_channels() -> dict:
