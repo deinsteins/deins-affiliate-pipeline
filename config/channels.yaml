@@ -1,6 +1,10 @@
 # Telegram channels to watch for affiliate product videos.
 channels:
-  - username: contoh_channel_produk   # TODO: replace with real channels
+  - username: videopromosishopee
+    enabled: true
+  - username: VIDEO_AFFILIATED_SHOPE_FREE
+    enabled: true
+  - username: shopeeracunmurah
     enabled: true
 
 platforms:
