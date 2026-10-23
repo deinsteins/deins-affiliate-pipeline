@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     threads_access_token: str = ""
     notify_bot_token: str = ""
     notify_chat_id: str = ""
+    dashboard_user: str = "deni"
+    dashboard_password: str = ""
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 

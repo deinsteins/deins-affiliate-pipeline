@@ -1,0 +1,12 @@
+[Unit]
+Description=Public tunnel (Serveo) for the affiliate dashboard
+After=network-online.target affiliate-dashboard.service
+
+[Service]
+Type=simple
+ExecStart=/home/hatch/workspace/deins-affiliate-pipeline/scripts/tunnel.sh
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
