@@ -3,7 +3,7 @@ Description=Run the affiliate caption worker hourly
 
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=1h
+OnUnitActiveSec=20min
 Persistent=true
 
 [Install]
