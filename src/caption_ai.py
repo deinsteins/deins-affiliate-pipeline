@@ -43,5 +43,5 @@ async def generate_captions(settings: Settings, product_name: str | None,
         model=settings.router_model,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
-        temperature=0.8, max_tokens=1200)
+        temperature=0.8, max_tokens=2600)
     return json.loads(resp.choices[0].message.content)

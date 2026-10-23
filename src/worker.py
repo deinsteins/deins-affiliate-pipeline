@@ -18,16 +18,21 @@ async def run_once() -> None:
     conn = dbmod.connect(DB)
     items = dbmod.items_by_status(conn, "downloaded")
     print(f"[worker] {len(items)} item menunggu caption", flush=True)
-    for item in items:
-        try:
-            captions = await generate_captions(
-                settings, item["product_name"], item["source_text"],
-                item["product_url"], style_cfg)
-            pkg = build_package(conn, item, captions)
-            print(f"[worker] item#{item['id']} -> {pkg.name}", flush=True)
-        except Exception as e:
-            print(f"[worker] item#{item['id']} GAGAL: {type(e).__name__}: "
-                  f"{str(e)[:120]}", flush=True)
+    sem = asyncio.Semaphore(5)
+
+    async def process(item):
+        async with sem:
+            try:
+                captions = await generate_captions(
+                    settings, item["product_name"], item["source_text"],
+                    item["product_url"], style_cfg)
+                pkg = build_package(conn, item, captions)
+                print(f"[worker] item#{item['id']} -> {pkg.name}", flush=True)
+            except Exception as e:
+                print(f"[worker] item#{item['id']} GAGAL: "
+                      f"{type(e).__name__}: {str(e)[:120]}", flush=True)
+
+    await asyncio.gather(*(process(it) for it in items))
     print("[worker] selesai", flush=True)
 
 

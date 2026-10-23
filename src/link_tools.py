@@ -21,6 +21,7 @@ def extract_shopee_urls(text: str) -> list[str]:
 
 def parse_product_url(url: str) -> dict:
     """Pull region / shop / item / name out of a canonical product URL."""
+    url = url.split("?")[0].split("#")[0]  # drop tracking params (gads/utm)
     info = {"product_url": url, "region": None, "shop_id": None,
             "item_id": None, "product_name": None}
     if "shopee.co.id" in url:
