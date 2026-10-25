@@ -34,6 +34,9 @@ def connect(path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(items)")]
+    if "name_source" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN name_source TEXT")
+        conn.commit()
     if "affiliate_url" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN affiliate_url TEXT")
         conn.execute("ALTER TABLE items ADD COLUMN affiliate_source TEXT")

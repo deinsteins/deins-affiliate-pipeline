@@ -175,6 +175,21 @@ async def bulk_review_api(request: Request, _: str = Depends(auth)):
     return JSONResponse({"ok": True, "updated": n})
 
 
+@app.post("/api/items/{item_id}/rename")
+async def rename_item(item_id: int, request: Request,
+                      _: str = Depends(auth)):
+    from .name_resolver import apply_names
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if len(name) < 3:
+        raise HTTPException(400, "nama terlalu pendek")
+    c = conn()
+    applied, skipped = apply_names(c, {item_id: name}, "manual")
+    if not applied:
+        raise HTTPException(404, "item tidak ada atau nama tidak valid")
+    return JSONResponse({"ok": True, "id": item_id, "name": name})
+
+
 @app.post("/api/items/{item_id}/affiliate")
 async def make_affiliate(item_id: int, _: str = Depends(auth)):
     from .packager import set_affiliate_link
@@ -296,6 +311,9 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 .dsub{font-size:12.5px;color:#8a8a85}
 .notice{background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:10px 13px;font-size:13px;line-height:1.55;margin:12px 0;color:#78350f}
 .linkbtn{display:inline-block;background:#171717;color:#fff;text-decoration:none;padding:8.5px 14px;border-radius:9px;font-weight:600;font-size:13px;margin:10px 0 2px}
+.rename{margin:10px 0 2px}
+.rename button{padding:7px 12px;border-radius:8px;border:1px solid #e7e5e0;background:#fff;font:600 12.5px Inter;cursor:pointer}
+.rename input{width:100%;padding:8px 10px;border:1px solid #e7e5e0;border-radius:8px;font:400 13.5px Inter;margin-bottom:6px}
 .affbox{border:1px solid #e7e5e0;border-radius:11px;padding:11px 13px;margin:12px 0;background:#fbfbfa;word-break:break-all}
 .affbox b{font-size:12.5px}
 .affbox a{color:#c2410c;font-size:12.5px}
@@ -462,6 +480,7 @@ function renderDrawer(){
  +(it.has_video?'<video controls preload="metadata" poster="'+(it.has_thumb?'/thumb/'+it.id:'')+'" src="/media/'+it.id+'"></video>':'')
  +'<div class="dname">'+(esc(it.display_name)||'Nama produk belum terdeteksi')+'</div>'
  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
+ +'<div class="rename" id="renamebox"><button data-rename="'+it.id+'">✏️ Ubah nama produk</button></div>'
  +'<a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a>'
  +'<div class="affbox"><b>Link afiliasi kamu</b>'
  +(it.affiliate_url?'<div><a href="'+esc(it.affiliate_url)+'" target="_blank" rel="noopener">'+esc(it.affiliate_url)+'</a></div><div class="dsub">sumber: '+esc(it.affiliate_source||'')+' — link inilah yang dipakai saat posting.</div>':'<div class="dsub">Belum ada — paket ini masih memakai link si pembagi channel.</div><button class="affbtn" data-aff="'+it.id+'">Buat link afiliasi</button>')
@@ -484,6 +503,23 @@ function renderDrawer(){
 function openDrawer(id){SEL=id;renderDrawer();drawer.classList.add('open');scrim.classList.add('open')}
 function closeDrawer(){SEL=null;drawer.classList.remove('open');scrim.classList.remove('open')}
 document.addEventListener('click',function(e){
+ const rn=e.target.closest('[data-rename]');
+ if(rn){const box=$('#renamebox');
+  const cur=ITEMS.find(function(i){return i.id===Number(rn.dataset.rename)});
+  box.innerHTML='<input id="renameinput" value="'+esc(cur?cur.display_name:'')+'">'
+   +'<button data-renamesave="'+rn.dataset.rename+'">Simpan nama</button>';
+  const inp=$('#renameinput'); if(inp)inp.focus();
+  return}
+ const rns=e.target.closest('[data-renamesave]');
+ if(rns){const id=Number(rns.dataset.renamesave);
+  const val=$('#renameinput').value.trim();
+  if(val.length<3){alert('Nama terlalu pendek');return}
+  fetch('/api/items/'+id+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:val})})
+   .then(function(r){return r.json()})
+   .then(function(j){if(j.ok){const it=ITEMS.find(function(i){return i.id===id});
+     if(it){it.display_name=j.name;it.name=j.name} renderDrawer(); renderGrid(); stats();}
+     else alert(j.detail||'gagal menyimpan nama');});
+  return}
  const sel=e.target.closest('[data-sel]');
  if(sel){const id=Number(sel.dataset.sel);
   if(sel.checked)SEL_IDS.add(id); else SEL_IDS.delete(id);
