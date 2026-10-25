@@ -6,10 +6,12 @@ opaque /opaanlp/<shop>/<item> form, which carries no name slug, so
 Names must come from somewhere else:
 
 - ID items: the logged-in Shopee browser session (account "isengnemu",
-  established 2026-10-23; cookies survive in the browser profile).
-  The in-session API https://shopee.co.id/api/v4/item/get returns the
-  name for a shop/item id pair. A browser task fetches batches and
-  reports {item_id: name}; this module applies those reports.
+  established 2026-10-23, re-confirmed alive 2026-10-25; cookies survive
+  in the browser profile). NOTE: the in-session item API
+  (api/v4/item/get) returns error 90309999 even with the session alive,
+  so the working route is the product page itself (h1/title).
+  A browser task fetches batches and reports {item_id: name}; this
+  module applies those reports.
 - MY items: no MY login exists (per-country accounts), so their names
   come from manual rename in the dashboard until a MY session exists.
   Once a MY item HAS a name, the remap step searches that name on
