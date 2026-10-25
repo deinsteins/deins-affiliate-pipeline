@@ -110,7 +110,10 @@ def video_jobs_list(_: str = Depends(auth)):
         "SELECT * FROM video_jobs ORDER BY id DESC LIMIT 50").fetchall()]
     for j in jobs:
         j.pop("script_json", None)
-    return {"jobs": jobs, "top_products": vg.top_products(c, limit=10)}
+    from . import flow_backend as fb
+    return {"jobs": jobs, "top_products": vg.top_products(c, limit=10),
+            "flow_credits_used": fb.credits_used_this_month(c),
+            "flow_credits_budget": settings.flow_credits_budget}
 
 
 @app.post("/api/video-jobs")
@@ -133,10 +136,13 @@ async def video_jobs_create(request: Request, _: str = Depends(auth)):
         cat, src = body.get("category") or "", None
         if not url or not name:
             raise HTTPException(400, "product_url + product_name wajib diisi")
+    backend = body.get("backend") or "flow"
+    if backend not in ("flow", "veo"):
+        raise HTTPException(400, "backend harus 'flow' atau 'veo'")
     cur = c.execute(
         "INSERT INTO video_jobs (source_item_id, product_url, product_name,"
-        " shop_id, item_id, category) VALUES (?, ?, ?, ?, ?, ?)",
-        (src, url, name, shop, iid, cat))
+        " shop_id, item_id, category, backend) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (src, url, name, shop, iid, cat, backend))
     c.commit()
     return JSONResponse({"ok": True, "job_id": cur.lastrowid})
 
@@ -752,21 +758,24 @@ stats(); load(); analytics(); vgen();
 function vgen(){
  fetch('/api/video-jobs').then(function(r){return r.json()}).then(function(d){
   const el=$('#vgen'); if(!el)return;
-  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI (Veo, mesin yang sama dengan Google Flow), lalu paket jadi masuk antrean approve seperti biasa. Butuh: router hidup (untuk script) + GEMINI_API_KEY (untuk video).</div>';
+  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI, lalu paket jadi masuk antrean approve seperti biasa. Backend: <b>Flow</b> (pakai kredit langganan Google AI Pro — gratis sampai kredit habis, butuh login Google sekali di browser server) atau <b>Veo API</b> (bayar per detik, butuh GEMINI_API_KEY). Script butuh router hidup. Estimasi kredit Flow bulan ini: <b>'+d.flow_credits_used+' / '+d.flow_credits_budget+'</b>.</div>'
+   +'<div class="rename">Backend: <select id="vbackend"><option value="flow" selected>Flow (kredit Pro)</option><option value="veo">Veo API (bayar)</option></select> <span class="dsub">Job Flow berhenti di queued_flow — agen menjalankan langkah browser-nya.</span></div>';
   h+='<div class="cols"><div class="col"><b>Produk terbaik (klik terbanyak)</b><table><tr><th>Produk</th><th>Klik</th><th></th></tr>'
    +d.top_products.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td><td><button data-vgen="'+t.item_id+'">🎬 Generate</button></td></tr>'}).join('')+'</table></div>';
   h+='<div class="col"><b>Produk baru (manual)</b><div class="rename"><input id="vurl" placeholder="Link produk Shopee"><input id="vname" placeholder="Nama produk"><button id="vcreate">Buat job video AI</button></div>';
-  h+='<b>Antrean job</b> <button id="vrefresh">Muat ulang</button><table><tr><th>#</th><th>Produk</th><th>Status</th><th></th></tr>'
-   +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td>'+esc(j.product_name)+'</td><td>'+j.status+(j.error?' — '+esc(j.error.slice(0,90)):'')+'</td><td>'
+  h+='<b>Antrean job</b> <button id="vrefresh">Muat ulang</button><table><tr><th>#</th><th>Produk</th><th>Backend</th><th>Status</th><th></th></tr>'
+   +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td>'+esc(j.product_name)+'</td><td>'+(j.backend||'flow')+(j.credits_used?' ('+j.credits_used+' kredit)':'')+'</td><td>'+j.status+(j.error?' — '+esc(j.error.slice(0,90)):'')+'</td><td>'
    +(j.status==='done'&&j.package_item_id?'<button data-open="'+j.package_item_id+'">Lihat di antrean</button>':(j.status==='failed'||j.status==='pending'?'<button data-vrun="'+j.id+'">Jalankan</button>':''))+'</td></tr>'}).join('')+'</table></div></div>';
   el.innerHTML=h;
   el.querySelectorAll('[data-vgen]').forEach(function(b){b.addEventListener('click',function(){
-   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:Number(b.dataset.vgen)})}).then(function(){vgen()})})});
+   const be=($('#vbackend')||{}).value||'flow';
+   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:Number(b.dataset.vgen),backend:be})}).then(function(){vgen()})})});
   const vc=$('#vcreate');
   if(vc)vc.addEventListener('click',function(){
    const url=$('#vurl').value.trim(), name=$('#vname').value.trim();
    if(!url||!name){alert('Isi link + nama produk');return}
-   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_url:url,product_name:name})}).then(function(){vgen()})});
+   const be2=($('#vbackend')||{}).value||'flow';
+   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_url:url,product_name:name,backend:be2})}).then(function(){vgen()})});
   el.querySelectorAll('[data-vrun]').forEach(function(b){b.addEventListener('click',function(){
    fetch('/api/video-jobs/'+b.dataset.vrun+'/run',{method:'POST'}).then(function(){setTimeout(vgen,1500)})})});
   const vr=$('#vrefresh'); if(vr)vr.addEventListener('click',vgen);

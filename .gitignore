@@ -15,3 +15,6 @@ storage/*.log
 storage/youtube-token.json
 storage/youtube-client-secrets.json
 storage/health.json
+
+# runtime video job artifacts
+storage/video_jobs/

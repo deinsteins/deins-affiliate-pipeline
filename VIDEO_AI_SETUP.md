@@ -45,3 +45,35 @@ sebagai backend eksperimental terpisah — bukan jalur utama.
   untuk job beneran jalankan di bawah nohup).
 - Job gagal bisa di-retry dari dashboard (tombol Jalankan) — proses
   dilanjutkan dari langkah yang gagal, bukan dari nol.
+
+## Backend hybrid: Flow (kredit Pro) vs Veo API
+
+Job punya kolom `backend`: `flow` (default) atau `veo`.
+
+- **Flow** (pakai kredit langganan Google AI Pro, gratis sampai kredit habis):
+  alurnya beda karena Flow tidak punya API publik. `run_job()` hanya
+  menjalankan script, menulis worklist ke
+  `storage/video_jobs/<id>/flow_worklist.json`, lalu parkir job di
+  status `queued_flow`. Agen mengambil worklist itu dan menjalankan
+  browser task ke Flow (URL: labs.google/fx/tools/flow) dengan
+  instruksi dari `src/flow_backend.py::build_browser_assignment()`:
+  cek login dulu (kalau belum login → lapor LOGIN_NEEDED, tidak
+  generate, tidak login atas nama owner), lalu 1 generasi per scene
+  (model = FLOW_MODEL, default fast, 9:16), download tiap klip.
+  Setelah klip kembali, `continue_flow_job()` memverifikasi 4 klip,
+  mencatat estimasi kredit (fast 20/klip, lite 10, quality 100),
+  lalu assemble + package seperti biasa.
+- **Veo API**: seperti sebelumnya — butuh GEMINI_API_KEY + billing,
+  jalan sampai selesai di background.
+- **Satu-satunya prasyarat Flow**: akun Google owner sudah login di
+  browser server (sekali saja, seperti login Shopee dulu). Tanpa itu
+  browser task berhenti di LOGIN_NEEDED dan tidak ada kredit terpakai.
+- **Pelacak kredit**: dashboard menampilkan estimasi kredit Flow
+  terpakai bulan berjalan vs FLOW_CREDITS_BUDGET (default 1000 =
+  Google AI Pro). Estimasi dari model, bukan dibaca dari UI Flow.
+  Kredit tidak rollover; generasi gagal tidak makan kredit.
+- **Jangan dicampuradukkan**: kredit Flow TIDAK bisa dipakai lewat
+  Gemini API — jalur billing-nya terpisah. Satu-satunya pengecualian
+  yang masih perlu diverifikasi di akun owner: laporan Oktober 2026
+  soal $10 kredit Cloud/bulan untuk paket Pro (lihat catatan di
+  chat 2026-10-25).

@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS video_jobs (
   shop_id TEXT, item_id TEXT, category TEXT,
   status TEXT DEFAULT 'pending',
   script_json TEXT, package_item_id INTEGER,
+  backend TEXT DEFAULT 'flow',
+  credits_used INTEGER DEFAULT 0,
+  browser_task_id TEXT,
   error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -52,10 +55,23 @@ CREATE TABLE IF NOT EXISTS platform_stats (
 """
 
 
+def _migrate(conn):
+    """Add columns to existing tables without wiping data."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(video_jobs)")}
+    for col, ddl in [
+            ("backend", "TEXT DEFAULT 'flow'"),
+            ("credits_used", "INTEGER DEFAULT 0"),
+            ("browser_task_id", "TEXT")]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE video_jobs ADD COLUMN {col} {ddl}")
+    conn.commit()
+
+
 def connect(path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(items)")]
     if "name_source" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN name_source TEXT")

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""  # Data API v3 read-only key for stats
     gemini_api_key: str = ""  # Gemini API key for Veo video generation
     veo_model: str = "veo-3.1-fast-generate-preview"
+    flow_model: str = "fast"  # Flow web model: fast (20 credits/clip)
+    # or quality (100 credits/clip); lite = 10 credits/clip
+    flow_credits_budget: int = 1000  # Google AI Pro monthly Flow credits
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 

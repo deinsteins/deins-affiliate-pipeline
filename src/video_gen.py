@@ -175,9 +175,64 @@ def package_video(conn, settings, job: dict, video_path: Path,
     return item_id
 
 
+def mark_flow_task(conn, job_id: int, task_id: str) -> None:
+    """Record the browser task driving a queued_flow job."""
+    conn.execute("UPDATE video_jobs SET browser_task_id = ? WHERE id = ?",
+                 (task_id, job_id))
+    conn.commit()
+
+
+def continue_flow_job(conn, settings, job_id: int,
+                      download_paths: list[Path]) -> dict:
+    """After the Flow browser task: verify clips, assemble, package.
+
+    download_paths: the 4 downloaded scene clips in scene order.
+    Credits are estimated from the flow model (fast=20/clip)."""
+    from . import flow_backend as fb
+    job = dict(conn.execute("SELECT * FROM video_jobs WHERE id = ?",
+                            (job_id,)).fetchone() or {})
+    if not job:
+        raise ValueError(f"job {job_id} tidak ada")
+    try:
+        if len(download_paths) != 4:
+            raise RuntimeError(
+                f"klip Flow tidak lengkap: {len(download_paths)}/4 — "
+                "generate ulang scene yang gagal.")
+        wd = fb.workdir(job_id)
+        clips = []
+        for i, src in enumerate(download_paths):
+            src = Path(src)
+            if not src.exists() or src.stat().st_size == 0:
+                raise RuntimeError(f"klip scene {i} kosong/hilang: {src}")
+            import shutil
+            dst = wd / f"scene{i}.mp4"
+            shutil.copyfile(src, dst)
+            clips.append(dst)
+        credits = fb.credits_for(
+            getattr(settings, "flow_model", "fast"), len(clips))
+        _set_status(conn, job_id, "assembling", credits_used=credits)
+        final = wd / "final.mp4"
+        assemble_video(clips, final)
+        script = json.loads(job["script_json"]) if job.get("script_json") \
+            else {"hook": job["product_name"], "scenes": [], "cta": ""}
+        _set_status(conn, job_id, "packaging")
+        item_id = package_video(conn, settings, job, final, script)
+        _set_status(conn, job_id, "done", package_item_id=item_id)
+    except Exception as e:  # noqa: BLE001 - recorded on the job
+        _set_status(conn, job_id, "failed", error=str(e)[:500])
+    return dict(conn.execute("SELECT * FROM video_jobs WHERE id = ?",
+                             (job_id,)).fetchone())
+
+
 def run_job(conn, settings, job_id: int) -> dict:
-    """Run one job through its state machine. Returns the final job row."""
+    """Run one job through its state machine. Returns the final job row.
+
+    Backend 'veo' runs to completion here. Backend 'flow' runs the
+    script step, writes the browser worklist, and parks at
+    'queued_flow' — the agent picks it up with a browser task, then
+    finishes it via continue_flow_job()."""
     from .veo_backend import generate_clip, VeoError
+    from . import flow_backend as fb
     job = dict(conn.execute("SELECT * FROM video_jobs WHERE id = ?",
                             (job_id,)).fetchone() or {})
     if not job:
@@ -193,7 +248,16 @@ def run_job(conn, settings, job_id: int) -> dict:
                 settings, job["product_name"], job["category"]))
             _set_status(conn, job_id, "scripting",
                         script_json=json.dumps(script, ensure_ascii=False))
-        # 2. clips (one per scene; resume skips scenes already on disk)
+        backend = job.get("backend") or "flow"
+        # 2a. Flow: park for the browser step (no API call here)
+        if backend == "flow":
+            fb.write_worklist(job, script)
+            _set_status(conn, job_id, "queued_flow")
+            return dict(conn.execute(
+                "SELECT * FROM video_jobs WHERE id = ?", (job_id,)).fetchone())
+        if backend != "veo":
+            raise RuntimeError(f"backend tidak dikenal: {backend}")
+        # 2b. Veo clips (one per scene; resume skips scenes on disk)
         _set_status(conn, job_id, "generating")
         workdir = ROOT / "storage" / "video_jobs" / str(job_id)
         workdir.mkdir(parents=True, exist_ok=True)
