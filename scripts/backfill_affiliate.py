@@ -27,6 +27,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--api", action="store_true")
     ap.add_argument("--anredir", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="tulis ulang link yang sudah ada")
     args = ap.parse_args()
     settings = Settings()
     use_api = args.api or (not args.anredir and
@@ -44,10 +46,11 @@ def main() -> int:
         print("butuh SHOPEE_AFFILIATE_ID untuk mode an_redir")
         return 2
     conn = dbmod.connect(DB)
-    rows = conn.execute(
-        "SELECT * FROM items WHERE status = 'packaged' AND "
-        "(affiliate_url IS NULL OR affiliate_url = '') "
-        "ORDER BY id").fetchall()
+    q = ("SELECT * FROM items WHERE status = 'packaged' "
+         "ORDER BY id" if args.force else
+         "SELECT * FROM items WHERE status = 'packaged' AND "
+         "(affiliate_url IS NULL OR affiliate_url = '') ORDER BY id")
+    rows = conn.execute(q).fetchall()
     if args.limit:
         rows = rows[:args.limit]
     print(f"{len(rows)} paket tanpa link afiliasi "
@@ -58,12 +61,11 @@ def main() -> int:
             if use_api:
                 url, source = client.generate_link(
                     it["product_url"], it["shop_id"], it["item_id"],
-                    platform_sub_ids("pipeline",
-                                     settings.shopee_affiliate_sub_id))
+                    [settings.shopee_affiliate_sub_id])
             else:
                 url = build_an_redir(
                     it["product_url"], settings.shopee_affiliate_id,
-                    f"{settings.shopee_affiliate_sub_id}-pipeline")
+                    settings.shopee_affiliate_sub_id)
                 source = "an_redir"
             if args.dry_run:
                 print(f"  #{it['id']} -> {source}: {url[:100]}")

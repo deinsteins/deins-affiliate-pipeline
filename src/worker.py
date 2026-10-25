@@ -33,12 +33,11 @@ async def run_once() -> None:
                 url, source = await asyncio.to_thread(
                     client.generate_link, item["product_url"],
                     item["shop_id"], item["item_id"],
-                    platform_sub_ids("pipeline",
-                                     settings.shopee_affiliate_sub_id))
+                    [settings.shopee_affiliate_sub_id])
             elif settings.shopee_affiliate_id:
                 url = build_an_redir(
                     item["product_url"], settings.shopee_affiliate_id,
-                    f"{settings.shopee_affiliate_sub_id}-pipeline")
+                    settings.shopee_affiliate_sub_id)
                 source = "an_redir"
             else:
                 return  # belum dikonfigurasi: lewati diam-diam
