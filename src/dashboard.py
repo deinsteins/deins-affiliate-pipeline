@@ -136,6 +136,45 @@ def thumb(item_id: int, _: str = Depends(auth)):
     return FileResponse(img, media_type="image/jpeg")
 
 
+@app.get("/api/health")
+def health_status(_: str = Depends(auth)):
+    from .health import (now_ts, read_health, router_status, service_active,
+                         worker_status)
+    h = read_health()
+    return {
+        "worker": worker_status(h.get("worker_last_finish")),
+        "worker_last_finish": h.get("worker_last_finish"),
+        "worker_last_ok": h.get("worker_last_ok"),
+        "worker_last_failed": h.get("worker_last_failed"),
+        "worker_last_error": h.get("worker_last_error"),
+        "router": router_status(h.get("router_ok"), h.get("router_last_probe"),
+                                h.get("router_fails_in_a_row", 0)),
+        "router_last_probe": h.get("router_last_probe"),
+        "router_detail": h.get("router_detail"),
+        "ingest": ("ok" if service_active("affiliate-pipeline.service")
+                   else "down"),
+        "ingest_last_item_at": h.get("ingest_last_item_at"),
+        "notifier_configured": bool(settings.notify_bot_token and
+                                    settings.notify_chat_id),
+        "checked_at": now_ts(),
+    }
+
+
+@app.post("/api/items/bulk-review")
+async def bulk_review_api(request: Request, _: str = Depends(auth)):
+    from .health import bulk_review
+    body = await request.json()
+    decision = body.get("decision")
+    filt = body.get("filter") or {}
+    ids = body.get("ids")
+    c = conn()
+    try:
+        n = bulk_review(c, decision, ids=ids, filt=filt)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return JSONResponse({"ok": True, "updated": n})
+
+
 @app.post("/api/items/{item_id}/affiliate")
 async def make_affiliate(item_id: int, _: str = Depends(auth)):
     from .packager import set_affiliate_link
@@ -203,6 +242,19 @@ header{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid 
 .prog{height:3px;background:#f0efec;border-radius:99px;overflow:hidden}
 .prog i{display:block;height:100%;background:#ee4d2d;width:0%}
 .bar{display:flex;align-items:center;gap:8px;padding:13px 26px 4px;flex-wrap:wrap;max-width:1460px;margin:0 auto}
+.health{display:flex;gap:7px;align-items:center;padding:10px 26px 0;flex-wrap:wrap;max-width:1460px;margin:0 auto}
+.hpill{display:flex;align-items:center;gap:6px;font-size:12px;background:#fff;border:1px solid #e7e5e0;border-radius:99px;padding:4px 11px}
+.hpill .dot{width:8px;height:8px;border-radius:99px;background:#a3a39d}
+.hpill .dot.ok{background:#16a34a}.hpill .dot.down{background:#dc2626}
+.hpill .dot.degraded{background:#d97706}.hpill .dot.never{background:#a3a39d}
+.hpill .tm{color:#8a8a85}
+.card{position:relative}
+.selbox{position:absolute;top:8px;left:8px;width:22px;height:22px;z-index:2;accent-color:#ee4d2d;cursor:pointer}
+.card.selected{outline:2px solid #ee4d2d}
+.bulkbar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#171717;color:#fff;border-radius:12px;padding:10px 14px;display:none;gap:10px;align-items:center;z-index:60;box-shadow:0 12px 32px rgba(0,0,0,.28)}
+.bulkbar.show{display:flex}
+.bulkbar button{padding:8px 14px;border-radius:8px;border:0;font:600 13px Inter;cursor:pointer}
+.bulkbar .ok{background:#ee4d2d;color:#fff}.bulkbar .rj{background:#fff;color:#b91c1c}.bulkbar .ghost{background:transparent;color:#fff;border:1px solid #444}
 .chip{border:1px solid #e7e5e0;background:#fff;color:#44443f;border-radius:99px;padding:6.5px 14px;font:500 13px Inter;cursor:pointer}
 .chip:hover{border-color:#cfccc4}
 .chip.on{background:#171717;border-color:#171717;color:#fff}
@@ -276,6 +328,13 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
  <input class="search" id="q" type="search" placeholder="Cari produk atau channel…">
 </header>
 <div class="progwrap"><div class="prog"><i id="progbar"></i></div></div>
+<div class="health" id="health"></div>
+<div class="bulkbar" id="bulkbar">
+ <span id="bulkcount"></span>
+ <button class="ok" data-bulk="approved">Setujui</button>
+ <button class="rj" data-bulk="rejected">Tolak</button>
+ <button class="ghost" data-bulk="clear">Batal</button>
+</div>
 <div class="bar" id="chips">
  <button class="chip on" data-grp="review" data-v="all">Semua</button>
  <button class="chip" data-grp="review" data-v="pending">Menunggu <span class="c" id="c-pending"></span></button>
@@ -286,6 +345,8 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
  <button class="chip" data-grp="region" data-v="ID">Indonesia</button>
  <button class="chip" data-grp="region" data-v="MY">Malaysia</button>
  <span class="info" id="info"></span>
+ <button class="chip" id="selall">Pilih semua di filter</button>
+ <button class="chip" id="approveall">Setujui semua hasil filter</button>
 </div>
 <main>
  <div class="grid" id="grid"></div>
@@ -299,6 +360,30 @@ const $=function(s){return document.querySelector(s)};
 const grid=$('#grid'), drawer=$('#drawer'), scrim=$('#scrim');
 const esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
 let ITEMS=[], SHOWN=60, SEL=null, TAB='youtube';
+let SEL_IDS=new Set();
+function fmtTime(ts){if(!ts)return '—';return new Date(ts*1000).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
+function dotCls(st){return st==='ok'?'ok':st==='down'?'down':st==='degraded'?'degraded':'never'}
+async function loadHealth(){
+ try{
+  const h=await api('/api/health');
+  const pill=function(label,st,txt){return '<span class="hpill"><span class="dot '+dotCls(st)+'"></span>'+label+(txt?' <span class="tm">'+txt+'</span>':'')+'</span>'};
+  $('#health').innerHTML=
+   pill('Worker',h.worker,'terakhir '+fmtTime(h.worker_last_finish)+(h.worker_last_failed?(' · '+h.worker_last_failed+' gagal'):''))
+   +pill('Router',h.router,h.router_detail||'')
+   +pill('Ingest',h.ingest,'item terakhir '+fmtTime(h.ingest_last_item_at))
+   +pill('Notifikasi Telegram',h.notifier_configured?'ok':'never',h.notifier_configured?'aktif':'belum dikonfigurasi');
+ }catch(e){}
+}
+function renderBulk(){
+ const b=$('#bulkbar');
+ if(SEL_IDS.size){b.classList.add('show');$('#bulkcount').textContent=SEL_IDS.size+' item dipilih';}
+ else b.classList.remove('show');
+ document.querySelectorAll('.card').forEach(function(el){
+   const id=Number(el.dataset.open);
+   el.classList.toggle('selected',SEL_IDS.has(id));
+   const cb=el.querySelector('.selbox'); if(cb)cb.checked=SEL_IDS.has(id);
+ });
+}
 let F={review:'all',region:'all',q:''};
 async function api(u,o){const r=await fetch(u,o);return r.json()}
 function paras(t){return String(t||'').split(NL+NL).map(function(x){return '<p>'+esc(x).split(NL).join('<br>')+'</p>'}).join('')}
@@ -318,6 +403,7 @@ async function stats(){
 function cardHTML(it){
  const wait=it.status!=='packaged';
  return '<div class="card" data-open="'+it.id+'">'
+ +'<input type="checkbox" class="selbox" data-sel="'+it.id+'">'
  +(it.has_thumb?'<img loading="lazy" src="/thumb/'+it.id+'" alt="">':'<div class="ph">▶</div>')
  +'<div class="cb"><div class="name">'+(esc(it.display_name)||'(nama belum terdeteksi)')+'</div>'
  +'<div class="meta"><span>#'+it.id+'</span><span>'+esc(it.channel)+'</span>'
@@ -333,8 +419,20 @@ function renderGrid(){
  const part=ITEMS.slice(0,SHOWN);
  grid.innerHTML=part.map(cardHTML).join('')||'<div class="empty">Tidak ada item yang cocok dengan filter ini.<br>Coba longgarkan filter atau kata kuncinya.</div>';
  $('#more').style.display=ITEMS.length>SHOWN?'block':'none';
+ renderBulk();
+}
+async function bulkRev(decision,useFilter){
+ let body;
+ if(useFilter){body={decision:decision,filter:{review:F.review,region:F.region,q_text:F.q}};}
+ else{body={decision:decision,ids:Array.from(SEL_IDS)};}
+ const j=await api('/api/items/bulk-review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ SEL_IDS.clear();
+ if(useFilter){await load();}
+ else{await load();}
+ stats();
 }
 async function load(){
+ SEL_IDS.clear();
  const qs=new URLSearchParams({review:F.review,region:F.region,q_text:F.q});
  ITEMS=await api('/api/items?'+qs); SHOWN=60;
  if(SEL!=null&&!ITEMS.find(function(i){return i.id===SEL}))closeDrawer();
@@ -386,6 +484,12 @@ function renderDrawer(){
 function openDrawer(id){SEL=id;renderDrawer();drawer.classList.add('open');scrim.classList.add('open')}
 function closeDrawer(){SEL=null;drawer.classList.remove('open');scrim.classList.remove('open')}
 document.addEventListener('click',function(e){
+ const sel=e.target.closest('[data-sel]');
+ if(sel){const id=Number(sel.dataset.sel);
+  if(sel.checked)SEL_IDS.add(id); else SEL_IDS.delete(id);
+  renderBulk(); return}
+ const bb=e.target.closest('[data-bulk]');
+ if(bb){if(bb.dataset.bulk==='clear'){SEL_IDS.clear();renderBulk();} else bulkRev(bb.dataset.bulk,false); return}
  const aff=e.target.closest('[data-aff]');
  if(aff){const id=Number(aff.dataset.aff);
   fetch('/api/items/'+id+'/affiliate',{method:'POST'})
@@ -411,6 +515,13 @@ $('#chips').addEventListener('click',function(e){
 });
 let qt; $('#q').addEventListener('input',function(e){clearTimeout(qt);qt=setTimeout(function(){F.q=e.target.value;load()},220)});
 $('#more').addEventListener('click',function(){SHOWN+=60;renderGrid()});
+$('#selall').addEventListener('click',function(){
+ ITEMS.slice(0,SHOWN).forEach(function(i){SEL_IDS.add(i.id)}); renderBulk();
+});
+$('#approveall').addEventListener('click',function(){
+ if(confirm('Setujui '+ITEMS.length+' item yang cocok dengan filter saat ini?'))bulkRev('approved',true);
+});
+loadHealth(); setInterval(loadHealth,60000);
 document.addEventListener('keydown',function(e){
  if(e.target.tagName==='INPUT')return;
  if(SEL==null)return;

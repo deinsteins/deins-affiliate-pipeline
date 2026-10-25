@@ -1,0 +1,14 @@
+{
+  "states": {
+    "router": "degraded",
+    "worker": "never",
+    "ingest": "ok"
+  },
+  "router_last_probe": 1792935062,
+  "router_ok": false,
+  "router_detail": "APIConnectionError: Connection error.",
+  "router_fails_in_a_row": 1,
+  "worker_last_start": 1792935089,
+  "ingest_started_at": 1792935172,
+  "ingest_last_item_at": 1792935220
+}

@@ -6,6 +6,7 @@ import asyncio
 from . import db as dbmod
 from .caption_ai import generate_captions
 from .config import Settings, load_channels
+from .health import now_ts, write_health
 from .packager import build_package, set_affiliate_link
 from .shopee_affiliate import (ShopeeAffiliateClient, build_an_redir,
                                platform_sub_ids)
@@ -14,6 +15,7 @@ DB = "storage/pipeline.db"
 
 
 async def run_once() -> None:
+    write_health(worker_last_start=now_ts())
     settings = Settings()
     cfg = load_channels()
     style_cfg = cfg.get("captions", {})
@@ -48,6 +50,8 @@ async def run_once() -> None:
             print(f"[worker] item#{item['id']} link afiliasi GAGAL: "
                   f"{type(e).__name__}: {str(e)[:120]}", flush=True)
 
+    counts = {"ok": 0, "fail": 0, "last_error": ""}
+
     async def process(item):
         async with sem:
             try:
@@ -57,11 +61,17 @@ async def run_once() -> None:
                 pkg = build_package(conn, item, captions)
                 print(f"[worker] item#{item['id']} -> {pkg.name}", flush=True)
                 await attach_affiliate(item)
+                counts["ok"] += 1
             except Exception as e:
+                counts["fail"] += 1
+                counts["last_error"] = f"{type(e).__name__}: {str(e)[:120]}"
                 print(f"[worker] item#{item['id']} GAGAL: "
-                      f"{type(e).__name__}: {str(e)[:120]}", flush=True)
+                      f"{counts['last_error']}", flush=True)
 
     await asyncio.gather(*(process(it) for it in items))
+    write_health(worker_last_finish=now_ts(), worker_last_ok=counts["ok"],
+                 worker_last_failed=counts["fail"],
+                 worker_last_error=counts["last_error"])
     print("[worker] selesai", flush=True)
 
 

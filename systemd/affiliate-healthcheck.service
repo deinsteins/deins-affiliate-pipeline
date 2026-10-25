@@ -1,0 +1,10 @@
+[Unit]
+Description=Deins Affiliate Pipeline healthcheck (router/worker/ingest alarms)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hatch/workspace/deins-affiliate-pipeline
+ExecStart=/home/hatch/workspace/deins-affiliate-pipeline/.venv/bin/python -m src.healthcheck
+EnvironmentFile=/home/hatch/workspace/deins-affiliate-pipeline/.env
+Environment=NO_PROXY=localhost,127.0.0.1

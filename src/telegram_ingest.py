@@ -11,6 +11,7 @@ import httpx
 from telethon import events
 
 from . import db as dbmod
+from .health import now_ts, write_health
 from .config import Settings, load_channels, make_client
 from .link_tools import extract_shopee_urls, resolve_product_url
 
@@ -61,6 +62,8 @@ async def ingest_message(conn, http: httpx.AsyncClient, channel: str,
             region=info.get("region") or region_hint,
             shop_id=info.get("shop_id"), item_id=info.get("item_id"),
             slug=slug, status="downloaded")
+        if item_id:
+            write_health(ingest_last_item_at=now_ts())
         return f"item#{item_id} {slug}" if item_id else "skip:duplicate"
     except Exception:
         tmp.unlink(missing_ok=True)
@@ -93,6 +96,7 @@ async def run_ingest(settings: Settings, db_path: str) -> None:
     conn = dbmod.connect(db_path)
     client = make_client(settings)
     await client.start()
+    write_health(ingest_started_at=now_ts())
     print("[ingest] Telegram tersambung", flush=True)
     async with httpx.AsyncClient(trust_env=True) as http:
         await backfill(client, conn, http, cfg)
