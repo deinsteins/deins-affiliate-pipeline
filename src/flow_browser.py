@@ -50,15 +50,29 @@ class _BrowserThread(threading.Thread):
     def run(self):
         from playwright.sync_api import sync_playwright
         import os
-        exe = _shell_path()
+        exe = _browser_exe()
         with sync_playwright() as pw:
             kwargs = dict(headless=True, proxy={"server": PROXY},
-                          ignore_https_errors=True,
-                          viewport=VIEWPORT)
+                          ignore_https_errors=True, viewport=VIEWPORT,
+                          # Hide the automation flag: Google sign-in
+                          # rejects browsers that advertise automation
+                          # (its generic symptom is the "Cookies are
+                          # disabled" page). The owner still logs in
+                          # with their own hands; this only makes the
+                          # browser look like a normal Chrome.
+                          args=["--disable-blink-features="
+                                "AutomationControlled"])
             if exe:
                 kwargs["executable_path"] = exe
             self.ctx = pw.chromium.launch_persistent_context(
                 str(PROFILE_DIR), **kwargs)
+            # Same reason as above: navigator.webdriver is the
+            # clearest automation tell. Applied before any page
+            # navigation, so every sign-in page load sees a normal
+            # browser.
+            self.ctx.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', "
+                "{get: () => undefined});")
             self.page = self.ctx.pages[0] if self.ctx.pages \
                 else self.ctx.new_page()
             while True:
@@ -140,13 +154,27 @@ def status() -> dict:
     return _thread().submit(_fn)
 
 
-def _shell_path():
-    """Find a usable Chromium headless shell in any likely home dir.
+def _browser_exe():
+    """Find a usable Chromium binary in any likely home dir.
 
-    The dashboard service may run under a different HOME than the
-    interactive shell, so check both."""
+    Prefer Playwright's FULL chromium: the minimal headless_shell
+    build gets Google sign-in's generic "Cookies are disabled"
+    rejection (it fails Google's browser checks), while the full
+    build passes as a normal browser. Fall back to headless_shell
+    if the full build was never downloaded. The dashboard service
+    may run under a different HOME than the interactive shell, so
+    check both."""
     import glob
+    # The Muse browser's own full Chromium: verified 2026-10-26 to
+    # reach Google's real sign-in page (headless_shell gets rejected).
+    import os as _os
+    if _os.path.exists("/opt/meta-chromium/chrome"):
+        return "/opt/meta-chromium/chrome"
     for home in (os.path.expanduser("~"), "/home/hatch"):
+        hits = sorted(glob.glob(
+            home + "/.cache/ms-playwright/chromium-*/chrome-linux/chrome"))
+        if hits:
+            return hits[-1]
         hits = sorted(glob.glob(
             home + "/.cache/ms-playwright/chromium_headless_shell-*/"
             "chrome-linux/headless_shell"))
