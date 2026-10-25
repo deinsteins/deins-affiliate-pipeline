@@ -12,9 +12,11 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               RedirectResponse)
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+from . import analytics as an
 from . import db as dbmod
 from .config import Settings
 
@@ -45,6 +47,61 @@ def package_dir(item_id: int, slug: str) -> Path | None:
     return hits[0] if hits else None
 
 
+@app.get("/r/{code}")
+def shortlink_redirect(code: str, request: Request):
+    """Public click-tracked redirect: /r/<code> -> item's affiliate link.
+
+    No auth here by design — this URL is what gets posted in video
+    descriptions. Unknown codes 404; items without any link fall back
+    to their Shopee product page."""
+    c = conn()
+    for row in c.execute("SELECT id, product_url, affiliate_url FROM items"):
+        if an.short_code(row["id"]) == code:
+            an.record_click(c, row["id"], request)
+            target = row["affiliate_url"] or row["product_url"]
+            return RedirectResponse(target, status_code=302)
+    raise HTTPException(404, "shortlink tidak dikenal")
+
+
+@app.get("/api/stats/analytics")
+def analytics_stats(_: str = Depends(auth)):
+    """Click + category + platform rollup for the analytics panel."""
+    from .shopee_affiliate import effective_link
+    c = conn()
+    clicks = an.click_counts(c)
+    clicks30 = an.click_counts(c, days=30)
+    items = c.execute("SELECT id, product_name, category, channel "
+                      "FROM items").fetchall()
+    top = sorted(
+        ({"id": it["id"], "name": it["product_name"],
+          "category": it["category"] or "lainnya",
+          "clicks": clicks.get(it["id"], 0)} for it in items),
+        key=lambda d: -d["clicks"])[:8]
+    cats: dict = {}
+    for it in items:
+        cat = it["category"] or "belum bernama"
+        e = cats.setdefault(cat, {"items": 0, "clicks": 0})
+        e["items"] += 1
+        e["clicks"] += clicks.get(it["id"], 0)
+    platforms = {}
+    for r in c.execute("SELECT platform, SUM(views), SUM(likes), "
+                       "SUM(comments), MAX(fetched_at) FROM platform_stats "
+                       "GROUP BY platform").fetchall():
+        platforms[r[0]] = {"views": r[1] or 0, "likes": r[2] or 0,
+                           "comments": r[3] or 0, "fetched_at": r[4]}
+    return {"clicks_total": sum(clicks.values()),
+            "clicks_30d": sum(clicks30.values()),
+            "daily": an.daily_clicks(c, days=30),
+            "top_items": [t for t in top if t["clicks"] > 0],
+            "categories": [{"category": k, "items": v["items"],
+                            "clicks": v["clicks"],
+                            "avg": round(v["clicks"] / max(v["items"], 1), 1)}
+                           for k, v in sorted(cats.items(),
+                                              key=lambda kv: -kv[1]["clicks"])],
+            "platforms": platforms,
+            "shortlink_base": settings.public_base_url or ""}
+
+
 @app.get("/api/stats")
 def stats(_: str = Depends(auth)):
     c = conn()
@@ -70,6 +127,7 @@ def stats(_: str = Depends(auth)):
 def items(review: str = "all", region: str = "all", q_text: str = "",
           _: str = Depends(auth)):
     c = conn()
+    clicks = an.click_counts(c)
     q = "SELECT * FROM items WHERE status IN ('packaged','downloaded')"
     args = []
     if review != "all":
@@ -102,6 +160,10 @@ def items(review: str = "all", region: str = "all", q_text: str = "",
             "created": it["created_at"],
             "affiliate_url": it["affiliate_url"],
             "affiliate_source": it["affiliate_source"],
+            "clicks": clicks.get(it["id"], 0),
+            "short_code": an.short_code(it["id"]),
+            "shortlink": an.shortlink(it["id"], settings.public_base_url),
+            "category": it["category"] or "lainnya",
             "has_video": pkg is not None and (pkg / "video.mp4").exists(),
             "has_thumb": pkg is not None and (pkg / "thumb.jpg").exists(),
             "yt_title": caps.get("youtube", {}).get("title", ""),
@@ -188,6 +250,22 @@ async def rename_item(item_id: int, request: Request,
     if not applied:
         raise HTTPException(404, "item tidak ada atau nama tidak valid")
     return JSONResponse({"ok": True, "id": item_id, "name": name})
+
+
+@app.post("/api/items/{item_id}/category")
+async def set_category(item_id: int, request: Request,
+                       _: str = Depends(auth)):
+    body = await request.json()
+    cat = (body.get("category") or "").strip()
+    if cat not in list(an.CATEGORIES) + ["lainnya"]:
+        raise HTTPException(400, "kategori tidak dikenal")
+    c = conn()
+    cur = c.execute("UPDATE items SET category = ? WHERE id = ?",
+                    (cat, item_id))
+    c.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(404, "item tidak ada")
+    return JSONResponse({"ok": True, "id": item_id, "category": cat})
 
 
 @app.post("/api/items/{item_id}/affiliate")
@@ -314,6 +392,16 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 .rename{margin:10px 0 2px}
 .rename button{padding:7px 12px;border-radius:8px;border:1px solid #e7e5e0;background:#fff;font:600 12.5px Inter;cursor:pointer}
 .rename input{width:100%;padding:8px 10px;border:1px solid #e7e5e0;border-radius:8px;font:400 13.5px Inter;margin-bottom:6px}
+.analytics{margin:0 22px 4px;background:#fff;border:1px solid #eceae6;border-radius:14px;padding:14px 16px}
+.analytics h3{margin:0 0 2px;font-size:15px}
+.analytics .dsub{margin-bottom:10px}
+.analytics table{width:100%;border-collapse:collapse;font-size:13px}
+.analytics th{text-align:left;color:#8a8a85;font-weight:600;padding:4px 8px 4px 0;border-bottom:1px solid #efeeea}
+.analytics td{padding:5px 8px 5px 0;border-bottom:1px solid #f4f4f2}
+.analytics .big{font-size:21px;font-weight:700}
+.analytics .cols{display:flex;gap:28px;flex-wrap:wrap}
+.analytics .col{flex:1;min-width:230px}
+.analytics select{padding:6px 8px;border:1px solid #e7e5e0;border-radius:8px;font:600 12.5px Inter;background:#fff}
 .affbox{border:1px solid #e7e5e0;border-radius:11px;padding:11px 13px;margin:12px 0;background:#fbfbfa;word-break:break-all}
 .affbox b{font-size:12.5px}
 .affbox a{color:#c2410c;font-size:12.5px}
@@ -347,6 +435,7 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 </header>
 <div class="progwrap"><div class="prog"><i id="progbar"></i></div></div>
 <div class="health" id="health"></div>
+<section class="analytics" id="analytics"><div class="dsub">Memuat analitik…</div></section>
 <div class="bulkbar" id="bulkbar">
  <span id="bulkcount"></span>
  <button class="ok" data-bulk="approved">Setujui</button>
@@ -482,6 +571,11 @@ function renderDrawer(){
  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
  +'<div class="rename" id="renamebox"><button data-rename="'+it.id+'">✏️ Ubah nama produk</button></div>'
  +'<a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a>'
+ +'<div class="affbox"><b>Shortlink (yang dipasang di caption)</b>'
+ +'<div><a href="'+esc(it.shortlink)+'" target="_blank" rel="noopener">'+esc(it.shortlink)+'</a></div>'
+ +'<div class="dsub">'+it.clicks+' klik tercatat — setiap klik lewat link ini dicatat sebelum diteruskan ke link afiliasi.</div>'
+ +'<button class="affbtn" data-copy="'+esc(it.shortlink)+'">Salin shortlink</button></div>'
+ +'<div class="rename">Kategori: <select data-cat="'+it.id+'">'+['fashion','kecantikan','rumah','dapur','elektronik','kesehatan','anak & mainan','olahraga','makanan','lainnya'].map(function(x){return '<option value="'+x+'"'+(x===it.category?' selected':'')+'>'+x+'</option>'}).join('')+'</select> <span class="dsub">otomatis dari nama produk, bisa diubah.</span></div>'
  +'<div class="affbox"><b>Link afiliasi kamu</b>'
  +(it.affiliate_url?'<div><a href="'+esc(it.affiliate_url)+'" target="_blank" rel="noopener">'+esc(it.affiliate_url)+'</a></div><div class="dsub">sumber: '+esc(it.affiliate_source||'')+' — link inilah yang dipakai saat posting.</div>':'<div class="dsub">Belum ada — paket ini masih memakai link si pembagi channel.</div><button class="affbtn" data-aff="'+it.id+'">Buat link afiliasi</button>')
  +'</div>';
@@ -502,6 +596,29 @@ function renderDrawer(){
 }
 function openDrawer(id){SEL=id;renderDrawer();drawer.classList.add('open');scrim.classList.add('open')}
 function closeDrawer(){SEL=null;drawer.classList.remove('open');scrim.classList.remove('open')}
+document.addEventListener('change',function(e){
+ const cs=e.target.closest('[data-cat]');
+ if(!cs)return;
+ fetch('/api/items/'+cs.dataset.cat+'/category',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:cs.value})})
+  .then(function(r){return r.json()})
+  .then(function(j){if(j.ok){const it=ITEMS.find(function(i){return i.id===Number(cs.dataset.cat)});if(it)it.category=j.category;analytics();}});
+});
+function analytics(){
+ fetch('/api/stats/analytics').then(function(r){return r.json()}).then(function(a){
+  const el=$('#analytics'); if(!el)return;
+  let h='<h3>📊 Analitik</h3><div class="dsub">Klik shortlink per item + kategori produk yang paling laku. Views/likes platform muncul setelah ada video yang terposting (fitur posting).</div><div class="cols">';
+  h+='<div class="col"><div class="big">'+a.clicks_30d+'</div><div class="dsub">klik 30 hari terakhir · total '+a.clicks_total+'</div>';
+  if(a.top_items.length){h+='<table><tr><th>Item teratas</th><th>Klik</th></tr>'+a.top_items.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td></tr>'}).join('')+'</table>';}
+  else{h+='<div class="dsub">Belum ada klik — klik tercatat begitu shortlink dipakai di caption postingan.</div>';}
+  h+='</div><div class="col"><table><tr><th>Kategori</th><th>Item</th><th>Klik</th><th>Rata2</th></tr>'+a.categories.map(function(x){return '<tr><td>'+esc(x.category)+'</td><td>'+x.items+'</td><td>'+x.clicks+'</td><td>'+x.avg+'</td></tr>'}).join('')+'</table>';
+  const pf=a.platforms;
+  if(Object.keys(pf).length){h+='<div class="dsub" style="margin-top:10px">Platform: '+Object.keys(pf).map(function(p){return p+' 👁 '+pf[p].views+' ♥ '+pf[p].likes}).join(' · ')+'</div>';}
+  else{h+='<div class="dsub" style="margin-top:10px">Views/likes platform: belum terhubung (butuh akun posting YouTube/FB/Threads).</div>';}
+  if(!a.shortlink_base){h+='<div class="notice"><b>Shortlink belum punya domain publik tetap.</b> Saat ini domain-nya ikut tunnel dashboard yang berubah tiap VM restart — set PUBLIC_BASE_URL di .env ke URL tunnel terbaru (atau domain sendiri nanti) supaya shortlink yang diposting tidak basi.</div>';}
+  h+='</div></div>';
+  el.innerHTML=h;
+ });
+}
 document.addEventListener('click',function(e){
  const rn=e.target.closest('[data-rename]');
  if(rn){const box=$('#renamebox');
@@ -520,6 +637,8 @@ document.addEventListener('click',function(e){
      if(it){it.display_name=j.name;it.name=j.name} renderDrawer(); renderGrid(); stats();}
      else alert(j.detail||'gagal menyimpan nama');});
   return}
+ const cp=e.target.closest('[data-copy]');
+ if(cp){navigator.clipboard.writeText(cp.dataset.copy);cp.textContent='Tersalin!';setTimeout(function(){cp.textContent='Salin shortlink'},1500);return}
  const sel=e.target.closest('[data-sel]');
  if(sel){const id=Number(sel.dataset.sel);
   if(sel.checked)SEL_IDS.add(id); else SEL_IDS.delete(id);
@@ -569,7 +688,7 @@ document.addEventListener('keydown',function(e){
  else if(e.key==='ArrowDown'){if(ITEMS[idx+1])openDrawer(ITEMS[idx+1].id)}
  else if(e.key==='ArrowUp'){if(ITEMS[idx-1])openDrawer(ITEMS[idx-1].id)}
 });
-stats(); load();
+stats(); load(); analytics();
 </script></body></html>
 """
 

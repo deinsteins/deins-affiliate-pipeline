@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     shopee_affiliate_id: str = ""
     shopee_affiliate_sub_id: str = "deins-pipeline"
     dashboard_password: str = ""
+    public_base_url: str = ""  # stable public URL of the dashboard; the
+    # shortlink domain. Currently the Serveo tunnel URL (changes on VM
+    # replacement — update it then, codes stay valid).
+    youtube_api_key: str = ""  # Data API v3 read-only key for stats
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 

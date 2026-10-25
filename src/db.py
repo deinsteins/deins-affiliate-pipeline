@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS posts (
   attempts INTEGER DEFAULT 0,
   PRIMARY KEY (item_id, platform)
 );
+CREATE TABLE IF NOT EXISTS clicks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER, ts TEXT,
+  referer TEXT, device TEXT
+);
+CREATE TABLE IF NOT EXISTS platform_stats (
+  item_id INTEGER, platform TEXT,
+  post_id TEXT, post_url TEXT,
+  views INTEGER DEFAULT 0, likes INTEGER DEFAULT 0,
+  comments INTEGER DEFAULT 0, shares INTEGER DEFAULT 0,
+  fetched_at TEXT,
+  PRIMARY KEY (item_id, platform)
+);
 """
 
 
@@ -44,6 +57,9 @@ def connect(path) -> sqlite3.Connection:
     if "review" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN review TEXT "
                      "DEFAULT 'pending'")
+        conn.commit()
+    if "category" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN category TEXT")
         conn.commit()
     return conn
 

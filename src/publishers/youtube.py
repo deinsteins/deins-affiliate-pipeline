@@ -12,5 +12,7 @@ def upload_short(package_dir, caption: dict, privacy: str = "public") -> str:
     """Upload video.mp4 from the package; return the YouTube video URL."""
     # TODO: credentials from storage/youtube-token.json (scripts/youtube_auth.py)
     #       body: snippet{title, description, tags}, status{privacyStatus}
-    #       description gets the affiliate/product link + hashtags
+    #       description gets public_link(item, PUBLIC_BASE_URL) — the
+    #       trackable shortlink — never the raw affiliate URL, or
+    #       clicks bypass measurement (see src/analytics.py).
     ...

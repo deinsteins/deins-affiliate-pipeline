@@ -1,5 +1,6 @@
 """Threads API: create a video media container, poll processing,
 then publish. Link goes in the post text (and optionally first reply).
+Link: public_link(item, PUBLIC_BASE_URL) — the trackable shortlink.
 """
 import httpx
 

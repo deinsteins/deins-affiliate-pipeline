@@ -1,6 +1,8 @@
 """Meta Graph API: publish the video to the owner's Facebook Page
 (resumable video upload / Reels endpoint). Page token required —
 personal profiles cannot publish via API.
+Caption link: public_link(item, PUBLIC_BASE_URL) — the trackable
+shortlink (see src/analytics.py), never the raw affiliate URL.
 """
 import httpx
 
