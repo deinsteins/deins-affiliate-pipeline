@@ -9,3 +9,4 @@ storage/posted/*
 __pycache__/
 .venv/
 *.db
+storage/*.log
