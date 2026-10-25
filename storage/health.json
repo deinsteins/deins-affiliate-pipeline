@@ -9,7 +9,7 @@
   "router_detail": "APIConnectionError: Connection error.",
   "router_fails_in_a_row": 4,
   "worker_last_start": 1792936638,
-  "ingest_started_at": 1792935172,
+  "ingest_started_at": 1792937387,
   "ingest_last_item_at": 1792935889,
   "worker_last_finish": 1792936856,
   "worker_last_ok": 0,

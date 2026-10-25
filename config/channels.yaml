@@ -3,7 +3,9 @@ channels:
   - username: videopromosishopee
     enabled: true
   - username: VIDEO_AFFILIATED_SHOPE_FREE
-    enabled: true
+    enabled: false         # PAUSED 2026-10-25: MY names need manual rename
+                           # or a MY login before remap can run; 150 existing
+                           # MY items stay in the DB for later.
     link_region: MY        # its links point to Shopee Malaysia; videos are
     remap_to: ID           # reused, product link is remapped to Shopee ID
   - username: shopeeracunmurah
