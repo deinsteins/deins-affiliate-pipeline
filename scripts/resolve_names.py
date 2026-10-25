@@ -27,17 +27,21 @@ def main() -> int:
     w = sub.add_parser("worklist")
     w.add_argument("--region", default="ID")
     w.add_argument("--limit", type=int, default=15)
+    w.add_argument("--exclude", default="",
+                   help="comma-separated item ids to skip (e.g. captcha hits)")
     a = sub.add_parser("apply")
     a.add_argument("--from", dest="report", required=True)
     a.add_argument("--source", default="browser")
     args = ap.parse_args()
     conn = dbmod.connect(DB)
     if args.cmd == "worklist":
+        excl = [int(x) for x in args.exclude.split(",") if x.strip()]
         rows = conn.execute(
             "SELECT id, shop_id, item_id FROM items "
             "WHERE product_name IS NULL AND region = ? "
-            "AND shop_id IS NOT NULL ORDER BY id LIMIT ?",
-            (args.region, args.limit)).fetchall()
+            "AND shop_id IS NOT NULL ORDER BY id",
+            (args.region,)).fetchall()
+        rows = [r for r in rows if r["id"] not in excl][:args.limit]
         print(f"{len(rows)} item tanpa nama (region {args.region}):")
         for r in rows:
             print(f"\nITEM {r['id']} (shop {r['shop_id']}, item {r['item_id']}):")
