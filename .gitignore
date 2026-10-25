@@ -10,3 +10,7 @@ __pycache__/
 .venv/
 *.db
 storage/*.log
+
+# YouTube OAuth (never commit)
+storage/youtube-token.json
+storage/youtube-client-secrets.json

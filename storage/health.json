@@ -4,15 +4,15 @@
     "worker": "ok",
     "ingest": "ok"
   },
-  "router_last_probe": 1792938334,
+  "router_last_probe": 1792938953,
   "router_ok": false,
   "router_detail": "APIConnectionError: Connection error.",
-  "router_fails_in_a_row": 6,
-  "worker_last_start": 1792936638,
+  "router_fails_in_a_row": 7,
+  "worker_last_start": 1792938591,
   "ingest_started_at": 1792938340,
-  "ingest_last_item_at": 1792938481,
-  "worker_last_finish": 1792936856,
+  "ingest_last_item_at": 1792938622,
+  "worker_last_finish": 1792938693,
   "worker_last_ok": 0,
-  "worker_last_failed": 276,
+  "worker_last_failed": 357,
   "worker_last_error": "APIConnectionError: Connection error."
 }
