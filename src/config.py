@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     notify_bot_token: str = ""
     notify_chat_id: str = ""
     dashboard_user: str = "deni"
+    shopee_affiliate_app_id: str = ""
+    shopee_affiliate_secret: str = ""
+    shopee_affiliate_id: str = ""
+    shopee_affiliate_sub_id: str = "deins-pipeline"
     dashboard_password: str = ""
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")

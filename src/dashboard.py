@@ -56,6 +56,9 @@ def stats(_: str = Depends(auth)):
             "SELECT review, COUNT(*) FROM items GROUP BY review").fetchall()),
         "by_channel": dict(c.execute(
             "SELECT channel, COUNT(*) FROM items GROUP BY channel").fetchall()),
+        "affiliate": c.execute(
+            "SELECT COUNT(*) FROM items WHERE affiliate_url IS NOT NULL "
+            "AND affiliate_url != ''").fetchone()[0],
         "posts": [list(r) for r in c.execute(
             "SELECT platform, status, COUNT(*) FROM posts "
             "GROUP BY platform, status").fetchall()],
@@ -97,6 +100,8 @@ def items(review: str = "all", region: str = "all", q_text: str = "",
             "review": it["review"] or "pending",
             "product_url": it["product_url"],
             "created": it["created_at"],
+            "affiliate_url": it["affiliate_url"],
+            "affiliate_source": it["affiliate_source"],
             "has_video": pkg is not None and (pkg / "video.mp4").exists(),
             "has_thumb": pkg is not None and (pkg / "thumb.jpg").exists(),
             "yt_title": caps.get("youtube", {}).get("title", ""),
@@ -129,6 +134,41 @@ def thumb(item_id: int, _: str = Depends(auth)):
     if not img or not img.exists():
         raise HTTPException(404, "thumbnail tidak ada")
     return FileResponse(img, media_type="image/jpeg")
+
+
+@app.post("/api/items/{item_id}/affiliate")
+async def make_affiliate(item_id: int, _: str = Depends(auth)):
+    from .packager import set_affiliate_link
+    from .shopee_affiliate import (ShopeeAffiliateClient, build_an_redir,
+                                   platform_sub_ids)
+    c = conn()
+    it = c.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not it:
+        raise HTTPException(404, "item tidak ada")
+    try:
+        if settings.shopee_affiliate_app_id and settings.shopee_affiliate_secret:
+            client = ShopeeAffiliateClient(settings.shopee_affiliate_app_id,
+                                           settings.shopee_affiliate_secret)
+            url, source = client.generate_link(
+                it["product_url"], it["shop_id"], it["item_id"],
+                platform_sub_ids("dashboard",
+                                 settings.shopee_affiliate_sub_id))
+        elif settings.shopee_affiliate_id:
+            url = build_an_redir(
+                it["product_url"], settings.shopee_affiliate_id,
+                f"{settings.shopee_affiliate_sub_id}-dashboard")
+            source = "an_redir"
+        else:
+            raise HTTPException(400, "link afiliasi belum dikonfigurasi: "
+                                "isi SHOPEE_AFFILIATE_ID (atau AppId+Secret "
+                                "API) di .env dulu")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"generate link gagal: {e}")
+    set_affiliate_link(c, item_id, url, source)
+    return JSONResponse({"ok": True, "id": item_id,
+                         "affiliate_url": url, "affiliate_source": source})
 
 
 @app.post("/api/items/{item_id}/review")
@@ -204,6 +244,10 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 .dsub{font-size:12.5px;color:#8a8a85}
 .notice{background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:10px 13px;font-size:13px;line-height:1.55;margin:12px 0;color:#78350f}
 .linkbtn{display:inline-block;background:#171717;color:#fff;text-decoration:none;padding:8.5px 14px;border-radius:9px;font-weight:600;font-size:13px;margin:10px 0 2px}
+.affbox{border:1px solid #e7e5e0;border-radius:11px;padding:11px 13px;margin:12px 0;background:#fbfbfa;word-break:break-all}
+.affbox b{font-size:12.5px}
+.affbox a{color:#c2410c;font-size:12.5px}
+.affbtn{margin-top:8px;padding:8px 14px;border-radius:9px;border:0;background:#ee4d2d;color:#fff;font:600 13px Inter;cursor:pointer}
 .tabs{display:flex;gap:3px;border-bottom:1px solid #e7e5e0;margin-top:14px}
 .tab{border:0;background:none;padding:8px 11px;font:600 13px Inter;color:#8a8a85;cursor:pointer;border-bottom:2px solid transparent}
 .tab.on{color:#171717;border-bottom-color:#ee4d2d}
@@ -269,7 +313,7 @@ async function stats(){
  $('#c-rejected').textContent=s.by_review.rejected||0;
  const done=(s.by_review.approved||0)+(s.by_review.rejected||0);
  $('#progbar').style.width=(s.total?Math.round(done/s.total*100):0)+'%';
- $('#info').textContent=done+' dari '+s.total+' item sudah direview';
+ $('#info').textContent=done+' dari '+s.total+' item sudah direview · '+(s.affiliate||0)+' sudah punya link afiliasi';
 }
 function cardHTML(it){
  const wait=it.status!=='packaged';
@@ -278,6 +322,7 @@ function cardHTML(it){
  +'<div class="cb"><div class="name">'+(esc(it.display_name)||'(nama belum terdeteksi)')+'</div>'
  +'<div class="meta"><span>#'+it.id+'</span><span>'+esc(it.channel)+'</span>'
  +'<span class="pill '+(it.region==='MY'?'my':'id')+'">'+(it.region||'')+'</span>'
+ +(it.affiliate_url?'<span class="pill approved">link ✓</span>':'')
  +'<span class="pill '+it.review+'">'+it.review+'</span></div>'
  +(wait?'<div class="cap wait">Menunggu caption worker…</div>':'<div class="cap">'+esc(it.yt_title||'')+'</div>')
  +'<div class="row"><button class="ok" data-act="approved" data-id="'+it.id+'">Setujui</button>'
@@ -319,7 +364,10 @@ function renderDrawer(){
  +(it.has_video?'<video controls preload="metadata" poster="'+(it.has_thumb?'/thumb/'+it.id:'')+'" src="/media/'+it.id+'"></video>':'')
  +'<div class="dname">'+(esc(it.display_name)||'Nama produk belum terdeteksi')+'</div>'
  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
- +'<a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a>';
+ +'<a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a>'
+ +'<div class="affbox"><b>Link afiliasi kamu</b>'
+ +(it.affiliate_url?'<div><a href="'+esc(it.affiliate_url)+'" target="_blank" rel="noopener">'+esc(it.affiliate_url)+'</a></div><div class="dsub">sumber: '+esc(it.affiliate_source||'')+' — link inilah yang dipakai saat posting.</div>':'<div class="dsub">Belum ada — paket ini masih memakai link si pembagi channel.</div><button class="affbtn" data-aff="'+it.id+'">Buat link afiliasi</button>')
+ +'</div>';
  if(wait)h+='<div class="notice"><b>Paket belum dibuat.</b> Item ini sudah terunduh dan menunggu giliran caption worker (jalan tiap 20 menit). Video dan caption akan muncul setelah paketnya jadi — review tetap bisa dilakukan dari sekarang.</div>';
  if(it.region==='MY')h+='<div class="notice"><b>Item Malaysia.</b> Videonya bisa dipakai, tapi link-nya masih menunjuk Shopee MY dan nama produk belum diketahui — item ini menunggu pemetaan link ke produk Shopee Indonesia sebelum siap posting.</div>';
  if(!wait){
@@ -338,6 +386,17 @@ function renderDrawer(){
 function openDrawer(id){SEL=id;renderDrawer();drawer.classList.add('open');scrim.classList.add('open')}
 function closeDrawer(){SEL=null;drawer.classList.remove('open');scrim.classList.remove('open')}
 document.addEventListener('click',function(e){
+ const aff=e.target.closest('[data-aff]');
+ if(aff){const id=Number(aff.dataset.aff);
+  fetch('/api/items/'+id+'/affiliate',{method:'POST'})
+   .then(function(r){return r.json()})
+   .then(function(j){
+     if(j.affiliate_url){const it=ITEMS.find(function(i){return i.id===id});
+       if(it){it.affiliate_url=j.affiliate_url;it.affiliate_source=j.affiliate_source}
+       renderDrawer(); stats();
+     } else {alert(j.detail||'gagal membuat link');}
+   });
+  return}
  const act=e.target.closest('[data-act]');
  if(act){e.stopPropagation();rev(Number(act.dataset.id),act.dataset.act);return}
  const tab=e.target.closest('[data-tab]'); if(tab){TAB=tab.dataset.tab;renderDrawer();return}
