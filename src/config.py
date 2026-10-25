@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # shortlink domain. Currently the Serveo tunnel URL (changes on VM
     # replacement — update it then, codes stay valid).
     youtube_api_key: str = ""  # Data API v3 read-only key for stats
+    gemini_api_key: str = ""  # Gemini API key for Veo video generation
+    veo_model: str = "veo-3.1-fast-generate-preview"
 
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 

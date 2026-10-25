@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS clicks (
   item_id INTEGER, ts TEXT,
   referer TEXT, device TEXT
 );
+CREATE TABLE IF NOT EXISTS video_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_item_id INTEGER,
+  product_url TEXT, product_name TEXT,
+  shop_id TEXT, item_id TEXT, category TEXT,
+  status TEXT DEFAULT 'pending',
+  script_json TEXT, package_item_id INTEGER,
+  error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS platform_stats (
   item_id INTEGER, platform TEXT,
   post_id TEXT, post_url TEXT,

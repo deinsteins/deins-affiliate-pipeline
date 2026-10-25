@@ -11,7 +11,7 @@ import secrets
 import sqlite3
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                RedirectResponse)
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -100,6 +100,65 @@ def analytics_stats(_: str = Depends(auth)):
                                               key=lambda kv: -kv[1]["clicks"])],
             "platforms": platforms,
             "shortlink_base": settings.public_base_url or ""}
+
+
+@app.get("/api/video-jobs")
+def video_jobs_list(_: str = Depends(auth)):
+    from . import video_gen as vg
+    c = conn()
+    jobs = [dict(r) for r in c.execute(
+        "SELECT * FROM video_jobs ORDER BY id DESC LIMIT 50").fetchall()]
+    for j in jobs:
+        j.pop("script_json", None)
+    return {"jobs": jobs, "top_products": vg.top_products(c, limit=10)}
+
+
+@app.post("/api/video-jobs")
+async def video_jobs_create(request: Request, _: str = Depends(auth)):
+    from . import video_gen as vg
+    body = await request.json()
+    c = conn()
+    if body.get("item_id"):
+        row = c.execute("SELECT * FROM items WHERE id = ?",
+                        (body["item_id"],)).fetchone()
+        if not row:
+            raise HTTPException(404, "item tidak ada")
+        url, name = row["product_url"], row["product_name"]
+        shop, iid, cat = row["shop_id"], row["item_id"], row["category"]
+        src = row["id"]
+    else:
+        url = (body.get("product_url") or "").strip()
+        name = (body.get("product_name") or "").strip()
+        shop, iid = body.get("shop_id") or "", body.get("item_id") or ""
+        cat, src = body.get("category") or "", None
+        if not url or not name:
+            raise HTTPException(400, "product_url + product_name wajib diisi")
+    cur = c.execute(
+        "INSERT INTO video_jobs (source_item_id, product_url, product_name,"
+        " shop_id, item_id, category) VALUES (?, ?, ?, ?, ?, ?)",
+        (src, url, name, shop, iid, cat))
+    c.commit()
+    return JSONResponse({"ok": True, "job_id": cur.lastrowid})
+
+
+def _run_video_job_sync(job_id: int):
+    from . import video_gen as vg
+    vg.run_job(conn(), Settings(), job_id)
+
+
+@app.post("/api/video-jobs/{job_id}/run")
+def video_jobs_run(job_id: int, bg: BackgroundTasks,
+                   _: str = Depends(auth)):
+    c = conn()
+    row = c.execute("SELECT status FROM video_jobs WHERE id = ?",
+                    (job_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "job tidak ada")
+    if row["status"] in ("scripting", "generating", "assembling",
+                         "packaging"):
+        raise HTTPException(409, "job sedang berjalan")
+    bg.add_task(_run_video_job_sync, job_id)
+    return JSONResponse({"ok": True, "job_id": job_id, "status": "started"})
 
 
 @app.get("/api/stats")
@@ -436,6 +495,7 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 <div class="progwrap"><div class="prog"><i id="progbar"></i></div></div>
 <div class="health" id="health"></div>
 <section class="analytics" id="analytics"><div class="dsub">Memuat analitik…</div></section>
+<section class="analytics" id="vgen"><div class="dsub">Memuat Video AI…</div></section>
 <div class="bulkbar" id="bulkbar">
  <span id="bulkcount"></span>
  <button class="ok" data-bulk="approved">Setujui</button>
@@ -688,7 +748,30 @@ document.addEventListener('keydown',function(e){
  else if(e.key==='ArrowDown'){if(ITEMS[idx+1])openDrawer(ITEMS[idx+1].id)}
  else if(e.key==='ArrowUp'){if(ITEMS[idx-1])openDrawer(ITEMS[idx-1].id)}
 });
-stats(); load(); analytics();
+stats(); load(); analytics(); vgen();
+function vgen(){
+ fetch('/api/video-jobs').then(function(r){return r.json()}).then(function(d){
+  const el=$('#vgen'); if(!el)return;
+  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI (Veo, mesin yang sama dengan Google Flow), lalu paket jadi masuk antrean approve seperti biasa. Butuh: router hidup (untuk script) + GEMINI_API_KEY (untuk video).</div>';
+  h+='<div class="cols"><div class="col"><b>Produk terbaik (klik terbanyak)</b><table><tr><th>Produk</th><th>Klik</th><th></th></tr>'
+   +d.top_products.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td><td><button data-vgen="'+t.item_id+'">🎬 Generate</button></td></tr>'}).join('')+'</table></div>';
+  h+='<div class="col"><b>Produk baru (manual)</b><div class="rename"><input id="vurl" placeholder="Link produk Shopee"><input id="vname" placeholder="Nama produk"><button id="vcreate">Buat job video AI</button></div>';
+  h+='<b>Antrean job</b> <button id="vrefresh">Muat ulang</button><table><tr><th>#</th><th>Produk</th><th>Status</th><th></th></tr>'
+   +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td>'+esc(j.product_name)+'</td><td>'+j.status+(j.error?' — '+esc(j.error.slice(0,90)):'')+'</td><td>'
+   +(j.status==='done'&&j.package_item_id?'<button data-open="'+j.package_item_id+'">Lihat di antrean</button>':(j.status==='failed'||j.status==='pending'?'<button data-vrun="'+j.id+'">Jalankan</button>':''))+'</td></tr>'}).join('')+'</table></div></div>';
+  el.innerHTML=h;
+  el.querySelectorAll('[data-vgen]').forEach(function(b){b.addEventListener('click',function(){
+   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:Number(b.dataset.vgen)})}).then(function(){vgen()})})});
+  const vc=$('#vcreate');
+  if(vc)vc.addEventListener('click',function(){
+   const url=$('#vurl').value.trim(), name=$('#vname').value.trim();
+   if(!url||!name){alert('Isi link + nama produk');return}
+   fetch('/api/video-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_url:url,product_name:name})}).then(function(){vgen()})});
+  el.querySelectorAll('[data-vrun]').forEach(function(b){b.addEventListener('click',function(){
+   fetch('/api/video-jobs/'+b.dataset.vrun+'/run',{method:'POST'}).then(function(){setTimeout(vgen,1500)})})});
+  const vr=$('#vrefresh'); if(vr)vr.addEventListener('click',vgen);
+ });
+}
 </script></body></html>
 """
 
