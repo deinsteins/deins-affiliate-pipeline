@@ -77,3 +77,26 @@ Job punya kolom `backend`: `flow` (default) atau `veo`.
   yang masih perlu diverifikasi di akun owner: laporan Oktober 2026
   soal $10 kredit Cloud/bulan untuk paket Pro (lihat catatan di
   chat 2026-10-25).
+
+## Login Google/Flow dari dashboard (remote-control browser)
+
+Kenapa tidak ada form username/password di dashboard: dashboard dibuka
+dari HP owner, sedangkan sesi Flow harus hidup di browser SERVER —
+form di dashboard tidak bisa memindahkan sesi antar browser, dan
+proyek ini tidak pernah menangkap kredensial Google.
+
+Solusinya `src/flow_browser.py`: satu Chromium persisten di server
+(profil storage/flow-profile, lewat proxy relay 127.0.0.1:18080,
+pakai headless shell Playwright yang sudah ada) yang dikendalikan
+dari halaman dashboard `/flow-login` (di balik basic auth yang sama):
+screenshot live + klik + ketik + tombol Enter/Tab/Esc. Owner login
+di halaman asli Google dengan tangannya sendiri (2FA jalan normal);
+yang diketik hanya diteruskan ke browser, tidak pernah dicatat atau
+disimpan. goto() dibatasi ke host Google (Flow + accounts) saja.
+Status login dicek dari URL: kalau Flow melempar ke accounts.google
+berarti belum login.
+
+Catatan arsitektur: sesi ini milik browser Playwright, BUKAN profil
+browser-task Muse (profilnya berbeda). Jadi langkah generate Flow
+berikutnya harus memakai browser yang sama ini, bukan browser-task
+lama di flow_backend.py (yang tetap ada sebagai fallback).

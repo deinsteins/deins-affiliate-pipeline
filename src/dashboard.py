@@ -38,6 +38,15 @@ def auth(creds: HTTPBasicCredentials = Depends(security)):
     return creds.username
 
 
+@app.on_event("shutdown")
+def _shutdown_flow_browser():
+    try:
+        from . import flow_browser as fb
+        fb.stop()
+    except Exception:  # noqa: BLE001 - shutdown path
+        pass
+
+
 def conn():
     return dbmod.connect(DB)  # runs schema + review-column migration
 
@@ -61,6 +70,105 @@ def shortlink_redirect(code: str, request: Request):
             target = row["affiliate_url"] or row["product_url"]
             return RedirectResponse(target, status_code=302)
     raise HTTPException(404, "shortlink tidak dikenal")
+
+
+FLOW_LOGIN_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login Google / Flow</title><style>
+body{font-family:system-ui,sans-serif;max-width:980px;margin:0 auto;padding:16px;background:#f6f7f9;color:#222}
+h2{margin:4px 0} .card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:14px;margin:12px 0}
+#shot{width:100%;border:1px solid #ccc;border-radius:8px;cursor:crosshair;display:block}
+button,input{font-size:15px;padding:8px 12px;border-radius:8px;border:1px solid #ccc;background:#fff}
+button{cursor:pointer} #status{font-weight:600} .muted{color:#666;font-size:13px}
+#msg{color:#b00;min-height:1em}
+</style></head><body>
+<h2>🔑 Login Google / Flow</h2>
+<div class="card"><p>Ini <b>layar browser server</b> — bukan browser HP kamu. Klik di gambar = klik di browser server, ketik di kolom lalu Kirim = mengetik di browser server. Jadi kamu bisa login ke akun Google sendiri di halaman asli Google (termasuk kode 2FA kalau diminta).</p>
+<p class="muted">Yang diketik diteruskan ke browser saja — <b>tidak disimpan, tidak dicatat</b> di server. Halaman ini hanya boleh membuka situs Google (Flow + login). Setelah status menunjukkan sudah login, sesi tersimpan di profil browser server dan dipakai untuk generate video Flow.</p>
+<p>Status: <span id="status">…</span> · <span id="url" class="muted"></span></p>
+<p><button onclick="refreshStatus()">Refresh status</button> <button onclick="goFlow()">Buka Flow</button> <button onclick="refreshShot()">Refresh gambar</button> <label class="muted"><input type="checkbox" id="auto" checked> auto-refresh 4 dtk</label></p>
+<p id="msg"></p></div>
+<div class="card"><img id="shot" src="/flow-login/shot.png" alt="layar browser server">
+<p><input id="txt" placeholder="ketik di sini (mis. email / kode 2FA)" style="width:60%"> <button onclick="sendText()">Kirim</button>
+<button onclick="sendKey('Enter')">Enter ⏎</button> <button onclick="sendKey('Tab')">Tab ⇥</button> <button onclick="sendKey('Escape')">Esc</button></p>
+<p class="muted">Klik gambar dulu untuk fokus ke kolom yang benar di halaman Google, baru ketik. Kalau gambar belum berubah, tunggu 1–2 detik lalu Refresh gambar.</p></div>
+<script>
+const $=id=>document.getElementById(id);
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function refreshStatus(){try{const d=await fetch('/api/flow-login/status').then(r=>r.json());$('status').textContent=d.logged_in?'✅ SUDAH LOGIN':'🔒 BELUM LOGIN';$('url').textContent=d.url||'';}catch(e){$('msg').textContent='status gagal: '+e.message;}}
+async function refreshShot(){ $('shot').src='/flow-login/shot.png?t='+Date.now(); }
+async function goFlow(){try{await api('/api/flow-login/goto',{url:'https://labs.google/fx/tools/flow'});refreshShot();refreshStatus();}catch(e){$('msg').textContent=e.message;}}
+async function sendText(){const t=$('txt').value;if(!t)return;try{await api('/api/flow-login/type',{text:t});$('txt').value='';setTimeout(refreshShot,900);}catch(e){$('msg').textContent=e.message;}}
+async function sendKey(k){try{await api('/api/flow-login/key',{key:k});setTimeout(refreshShot,900);}catch(e){$('msg').textContent=e.message;}}
+$('shot').addEventListener('click',async ev=>{const r=$('shot').getBoundingClientRect();const x=Math.round(ev.clientX-r.left)*1280/r.width;const y=Math.round(ev.clientY-r.top)*800/r.height;try{await api('/api/flow-login/click',{x:x,y:y});setTimeout(refreshShot,900);}catch(e){$('msg').textContent=e.message;}});
+$('txt').addEventListener('keydown',ev=>{if(ev.key==='Enter')sendText();});
+setInterval(()=>{if($('auto').checked)refreshShot();},4000);
+refreshStatus();
+</script></body></html>"""
+
+@app.get("/flow-login", response_class=HTMLResponse)
+def flow_login_page(_: str = Depends(auth)):
+    """Remote-control page for the server browser's Google/Flow login."""
+    return HTMLResponse(FLOW_LOGIN_HTML)
+
+
+@app.get("/api/flow-login/status")
+def flow_login_status(_: str = Depends(auth)):
+    from . import flow_browser as fb
+    try:
+        return fb.status()
+    except Exception as e:  # noqa: BLE001 - surfaced to panel
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
+
+
+@app.get("/flow-login/shot.png")
+def flow_login_shot(_: str = Depends(auth)):
+    from . import flow_browser as fb
+    from fastapi.responses import Response
+    try:
+        return Response(content=fb.screenshot(), media_type="image/png")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
+
+
+@app.post("/api/flow-login/click")
+async def flow_login_click(request: Request, _: str = Depends(auth)):
+    from . import flow_browser as fb
+    body = await request.json()
+    try:
+        return fb.click(int(body["x"]), int(body["y"]))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
+
+
+@app.post("/api/flow-login/type")
+async def flow_login_type(request: Request, _: str = Depends(auth)):
+    from . import flow_browser as fb
+    body = await request.json()
+    try:
+        # forwarded to the browser only; never logged or stored
+        return fb.type_text(str(body.get("text", "")))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
+
+
+@app.post("/api/flow-login/key")
+async def flow_login_key(request: Request, _: str = Depends(auth)):
+    from . import flow_browser as fb
+    body = await request.json()
+    try:
+        return fb.press(str(body.get("key", "")))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
+
+
+@app.post("/api/flow-login/goto")
+async def flow_login_goto(request: Request, _: str = Depends(auth)):
+    from . import flow_browser as fb
+    body = await request.json()
+    try:
+        return fb.goto(str(body.get("url", "")))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"{type(e).__name__}: {e}"[:300])
 
 
 @app.get("/api/stats/analytics")
@@ -758,7 +866,7 @@ stats(); load(); analytics(); vgen();
 function vgen(){
  fetch('/api/video-jobs').then(function(r){return r.json()}).then(function(d){
   const el=$('#vgen'); if(!el)return;
-  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI, lalu paket jadi masuk antrean approve seperti biasa. Backend: <b>Flow</b> (pakai kredit langganan Google AI Pro — gratis sampai kredit habis, butuh login Google sekali di browser server) atau <b>Veo API</b> (bayar per detik, butuh GEMINI_API_KEY). Script butuh router hidup. Estimasi kredit Flow bulan ini: <b>'+d.flow_credits_used+' / '+d.flow_credits_budget+'</b>.</div>'
+  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI, lalu paket jadi masuk antrean approve seperti biasa. Backend: <b>Flow</b> (<a href="/flow-login" target="_blank">login Google dari sini dulu</a>) (pakai kredit langganan Google AI Pro — gratis sampai kredit habis, butuh login Google sekali di browser server) atau <b>Veo API</b> (bayar per detik, butuh GEMINI_API_KEY). Script butuh router hidup. Estimasi kredit Flow bulan ini: <b>'+d.flow_credits_used+' / '+d.flow_credits_budget+'</b>.</div>'
    +'<div class="rename">Backend: <select id="vbackend"><option value="flow" selected>Flow (kredit Pro)</option><option value="veo">Veo API (bayar)</option></select> <span class="dsub">Job Flow berhenti di queued_flow — agen menjalankan langkah browser-nya.</span></div>';
   h+='<div class="cols"><div class="col"><b>Produk terbaik (klik terbanyak)</b><table><tr><th>Produk</th><th>Klik</th><th></th></tr>'
    +d.top_products.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td><td><button data-vgen="'+t.item_id+'">🎬 Generate</button></td></tr>'}).join('')+'</table></div>';
