@@ -48,10 +48,31 @@ def _ensure_xvfb():
     sign-in form itself loads. A headed browser on a virtual display
     looks like a normal desktop Chrome. Reused across restarts; the
     dashboard service runs as root, so the socket dir is writable."""
+    import glob as _glob
     import subprocess
-    if os.path.exists("/tmp/.X99-lock"):
+    # A lock file alone proves nothing: Xvfb killed ungracefully
+    # leaves a stale lock (and socket) behind, and reusing a dead
+    # display makes every browser launch fail with "cannot open
+    # display" — the login screen never appears. Trust only a live
+    # Xvfb process; otherwise clear the stale files and start fresh.
+    running = False
+    for _pid in _glob.glob("/proc/[0-9]*"):
+        try:
+            _cmd = open(_pid + "/cmdline", "rb").read().decode(
+                errors="ignore")
+            if "Xvfb" in _cmd and ":99" in _cmd:
+                running = True
+                break
+        except Exception:  # noqa: BLE001 - proc entry vanished
+            pass
+    if running:
         os.environ["DISPLAY"] = ":99"
         return
+    for _stale in ("/tmp/.X99-lock", "/tmp/.X11-unix/X99"):
+        try:
+            os.remove(_stale)
+        except OSError:  # noqa: BLE001 - already gone
+            pass
     subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1280x800x24"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     import time
