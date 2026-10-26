@@ -16,7 +16,7 @@ PORT=${HOSTPORT#*:}
 # Serveo banner). Until registration completes, Serveo falls back to
 # a random URL, exactly as before; after registration, every tunnel
 # restart reclaims the same subdomain, so the link stops changing.
-exec ssh -i ~/.ssh/serveo_key -p 443 -R deinsdash:80:localhost:8600 serveo.net \
+exec ssh -i /home/hatch/.ssh/serveo_key -p 443 -R deinsdash:80:localhost:8600 serveo.net \
   -o "ProxyCommand=socat - PROXY:${HOST}:serveo.net:443,proxyport=${PORT},proxyauth=${USERPASS}" \
   -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes
