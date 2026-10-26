@@ -575,6 +575,37 @@ main{padding:16px 26px 40px;max-width:1460px;margin:0 auto}
 .analytics .cols{display:flex;gap:28px;flex-wrap:wrap}
 .analytics .col{flex:1;min-width:230px}
 .analytics select{padding:6px 8px;border:1px solid #e7e5e0;border-radius:8px;font:600 12.5px Inter;background:#fff}
+.kpis{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 4px}
+.kpi{flex:1;min-width:150px;background:#fbfbfa;border:1px solid #eceae6;border-radius:12px;padding:12px 14px}
+.kpi b{display:block;font-size:24px;letter-spacing:-.02em}
+.kpi span{font-size:12px;color:#8a8a85}
+.vsec{font-weight:700;font-size:14px;margin:16px 0 4px}
+.bar-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f4f4f2;font-size:13px}
+.bar-row .rnk{width:20px;flex:none;color:#a3a39d;font-weight:700}
+.bar-row .clip{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{width:110px;flex:none;height:8px;background:#f1f1ee;border-radius:99px;overflow:hidden}
+.bar-fill{display:block;height:100%;background:#ee4d2d;border-radius:99px}
+.bar-row .cnt{width:38px;flex:none;text-align:right;font-weight:700}
+.plats{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:4px 11px;border-radius:99px;white-space:nowrap}
+.pill.ok{background:#e7f6ec;color:#137333}
+.pill.bad{background:#fdecea;color:#b91c1c}
+.pill.warn{background:#fff7e0;color:#8a5a00}
+.pill.run{background:#e8f0fe;color:#1a56db}
+.pill.mut{background:#f1f1ee;color:#6b6b66}
+.meterbox{background:#fbfbfa;border:1px solid #eceae6;border-radius:12px;padding:12px 14px;margin:12px 0}
+.meter-top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}
+.meter{height:10px;background:#f1f1ee;border-radius:99px;overflow:hidden}
+.meter i{display:block;height:100%;background:#ee4d2d;border-radius:99px}
+.btn{border:0;background:#ee4d2d;color:#fff;padding:8px 14px;border-radius:9px;font:600 13px Inter;cursor:pointer;white-space:nowrap}
+.rename .btn{background:#ee4d2d;color:#fff;border:0;padding:8px 14px}
+.btn2{border:1px solid #e7e5e0;background:#fff;padding:7px 12px;border-radius:9px;font:600 12.5px Inter;cursor:pointer;white-space:nowrap}
+.vtab{width:100%;border-collapse:collapse;font-size:13px}
+.vtab th{text-align:left;color:#8a8a85;font-weight:600;padding:4px 8px 4px 0;border-bottom:1px solid #efeeea;font-size:12px}
+.vtab td{padding:8px 8px 8px 0;border-bottom:1px solid #f4f4f2;vertical-align:top}
+.vtab .clip{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.verr{font-size:12px;color:#b91c1c;margin-top:3px}
+@media (max-width:700px){.bar-track{width:64px}.vtab .clip{max-width:180px}}
 .affbox{border:1px solid #e7e5e0;border-radius:11px;padding:11px 13px;margin:12px 0;background:#fbfbfa;word-break:break-all}
 .affbox b{font-size:12.5px}
 .affbox a{color:#c2410c;font-size:12.5px}
@@ -780,16 +811,28 @@ document.addEventListener('change',function(e){
 function analytics(){
  fetch('/api/stats/analytics').then(function(r){return r.json()}).then(function(a){
   const el=$('#analytics'); if(!el)return;
-  let h='<h3>📊 Analitik</h3><div class="dsub">Klik shortlink per item + kategori produk yang paling laku. Views/likes platform muncul setelah ada video yang terposting (fitur posting).</div><div class="cols">';
-  h+='<div class="col"><div class="big">'+a.clicks_30d+'</div><div class="dsub">klik 30 hari terakhir · total '+a.clicks_total+'</div>';
-  if(a.top_items.length){h+='<table><tr><th>Item teratas</th><th>Klik</th></tr>'+a.top_items.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td></tr>'}).join('')+'</table>';}
-  else{h+='<div class="dsub">Belum ada klik — klik tercatat begitu shortlink dipakai di caption postingan.</div>';}
-  h+='</div><div class="col"><table><tr><th>Kategori</th><th>Item</th><th>Klik</th><th>Rata2</th></tr>'+a.categories.map(function(x){return '<tr><td>'+esc(x.category)+'</td><td>'+x.items+'</td><td>'+x.clicks+'</td><td>'+x.avg+'</td></tr>'}).join('')+'</table>';
-  const pf=a.platforms;
-  if(Object.keys(pf).length){h+='<div class="dsub" style="margin-top:10px">Platform: '+Object.keys(pf).map(function(p){return p+' 👁 '+pf[p].views+' ♥ '+pf[p].likes}).join(' · ')+'</div>';}
-  else{h+='<div class="dsub" style="margin-top:10px">Views/likes platform: belum terhubung (butuh akun posting YouTube/FB/Threads).</div>';}
-  if(!a.shortlink_base){h+='<div class="notice"><b>Shortlink belum punya domain publik tetap.</b> Saat ini domain-nya ikut tunnel dashboard yang berubah tiap VM restart — set PUBLIC_BASE_URL di .env ke URL tunnel terbaru (atau domain sendiri nanti) supaya shortlink yang diposting tidak basi.</div>';}
+  const cats=a.categories.slice().sort(function(x,y){return y.clicks-x.clicks});
+  const maxCat=cats.length?Math.max.apply(null,cats.map(function(x){return x.clicks})):0;
+  const topCat=cats.length&&cats[0].clicks>0?cats[0].category:'—';
+  let h='<h3>📊 Analitik</h3><div class="dsub">Klik shortlink per item + kategori produk yang paling laku. Views/likes platform muncul setelah ada video yang terposting.</div>';
+  h+='<div class="kpis"><div class="kpi"><b>'+a.clicks_30d+'</b><span>klik · 30 hari terakhir</span></div><div class="kpi"><b>'+a.clicks_total+'</b><span>klik · total</span></div><div class="kpi"><b>'+esc(topCat)+'</b><span>kategori teratas</span></div></div>';
+  h+='<div class="cols"><div class="col"><div class="vsec">Item teratas</div>';
+  if(a.top_items.length){
+    const mx=Math.max.apply(null,a.top_items.map(function(t){return t.clicks}));
+    h+=a.top_items.map(function(t,i){return '<div class="bar-row"><span class="rnk">'+(i+1)+'</span><span class="clip" title="'+esc(t.name||'')+'">'+esc(t.name||'(tanpa nama)')+'</span><span class="bar-track"><i class="bar-fill" style="width:'+(mx?Math.round(t.clicks/mx*100):0)+'%"></i></span><span class="cnt">'+t.clicks+'</span></div>'}).join('');
+  } else { h+='<div class="dsub">Belum ada klik — klik tercatat begitu shortlink dipakai di caption postingan.</div>'; }
+  h+='</div><div class="col"><div class="vsec">Klik per kategori</div>';
+  h+=cats.map(function(x){return '<div class="bar-row"><span class="clip" title="'+esc(x.category)+'">'+esc(x.category)+' <span class="dsub">· '+x.items+' item · rata2 '+x.avg+'</span></span><span class="bar-track"><i class="bar-fill" style="width:'+(maxCat?Math.round(x.clicks/maxCat*100):0)+'%"></i></span><span class="cnt">'+x.clicks+'</span></div>'}).join('');
   h+='</div></div>';
+  const pf=a.platforms||{};
+  const seen={};
+  const plats=[['YouTube','youtube'],['Facebook','facebook'],['Threads','threads']].map(function(p){
+    const v=pf[p[1]]||pf[p[0]];
+    if(v){seen[p[1]]=1;seen[p[0]]=1;return '<span class="pill ok">'+p[0]+' 👁 '+v.views+' ♥ '+v.likes+'</span>'}
+    return '<span class="pill mut">'+p[0]+' · belum terhubung</span>'}).join('');
+  const extra=Object.keys(pf).filter(function(k){return !seen[k]}).map(function(k){return '<span class="pill ok">'+esc(k)+' 👁 '+pf[k].views+' ♥ '+pf[k].likes+'</span>'}).join('');
+  h+='<div class="plats">'+plats+extra+'</div>';
+  if(!a.shortlink_base){h+='<div class="notice"><b>Shortlink belum punya domain publik tetap.</b> Saat ini domain-nya ikut tunnel dashboard yang berubah tiap VM restart — set PUBLIC_BASE_URL di .env ke URL tunnel terbaru (atau domain sendiri nanti) supaya shortlink yang diposting tidak basi.</div>';}
   el.innerHTML=h;
  });
 }
@@ -866,14 +909,23 @@ stats(); load(); analytics(); vgen();
 function vgen(){
  fetch('/api/video-jobs').then(function(r){return r.json()}).then(function(d){
   const el=$('#vgen'); if(!el)return;
-  let h='<h3>🎬 Video AI</h3><div class="dsub">Cari produk terbaik (berdasarkan klik shortlink), generate script + video AI, lalu paket jadi masuk antrean approve seperti biasa. Backend: <b>Flow</b> (<a href="/flow-login" target="_blank">login Google dari sini dulu</a>) (pakai kredit langganan Google AI Pro — gratis sampai kredit habis, butuh login Google sekali di browser server) atau <b>Veo API</b> (bayar per detik, butuh GEMINI_API_KEY). Script butuh router hidup. Estimasi kredit Flow bulan ini: <b>'+d.flow_credits_used+' / '+d.flow_credits_budget+'</b>.</div>'
-   +'<div class="rename">Backend: <select id="vbackend"><option value="flow" selected>Flow (kredit Pro)</option><option value="veo">Veo API (bayar)</option></select> <span class="dsub">Job Flow berhenti di queued_flow — agen menjalankan langkah browser-nya.</span></div>';
-  h+='<div class="cols"><div class="col"><b>Produk terbaik (klik terbanyak)</b><table><tr><th>Produk</th><th>Klik</th><th></th></tr>'
-   +d.top_products.map(function(t){return '<tr><td>'+esc(t.name||'(tanpa nama)')+'</td><td>'+t.clicks+'</td><td><button data-vgen="'+t.item_id+'">🎬 Generate</button></td></tr>'}).join('')+'</table></div>';
-  h+='<div class="col"><b>Produk baru (manual)</b><div class="rename"><input id="vurl" placeholder="Link produk Shopee"><input id="vname" placeholder="Nama produk"><button id="vcreate">Buat job video AI</button></div>';
-  h+='<b>Antrean job</b> <button id="vrefresh">Muat ulang</button><table><tr><th>#</th><th>Produk</th><th>Backend</th><th>Status</th><th></th></tr>'
-   +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td>'+esc(j.product_name)+'</td><td>'+(j.backend||'flow')+(j.credits_used?' ('+j.credits_used+' kredit)':'')+'</td><td>'+j.status+(j.error?' — '+esc(j.error.slice(0,90)):'')+'</td><td>'
-   +(j.status==='done'&&j.package_item_id?'<button data-open="'+j.package_item_id+'">Lihat di antrean</button>':(j.status==='failed'||j.status==='pending'?'<button data-vrun="'+j.id+'">Jalankan</button>':''))+'</td></tr>'}).join('')+'</table></div></div>';
+  const used=d.flow_credits_used||0, budget=d.flow_credits_budget||1000;
+  const pct=budget?Math.min(100,Math.round(used/budget*100)):0;
+  const pill=function(st){
+    if(st==='done')return '<span class="pill ok">Selesai</span>';
+    if(st==='failed')return '<span class="pill bad">Gagal</span>';
+    if(st==='queued_flow')return '<span class="pill warn">Antre Flow</span>';
+    if(st==='pending')return '<span class="pill mut">Menunggu</span>';
+    return '<span class="pill run">Proses</span>';};
+  let h='<h3>🎬 Video AI</h3><div class="dsub">Video produk otomatis dari produk terlaris (klik shortlink) atau dari link manual — hasilnya masuk antrean approve seperti biasa.</div>';
+  h+='<div class="meterbox"><div class="meter-top"><b>Kredit Flow bulan ini</b><span>'+used+' / '+budget+'</span></div><div class="meter"><i style="width:'+pct+'%"></i></div><div class="dsub" style="margin-top:8px">1 video (4 scene Fast) ≈ 80 kredit · <a href="/flow-login" target="_blank">login Google untuk Flow</a> · Veo API bayar per detik (butuh GEMINI_API_KEY), script butuh router hidup.</div></div>';
+  h+='<div class="rename">Backend: <select id="vbackend"><option value="flow" selected>Flow (kredit Pro)</option><option value="veo">Veo API (bayar)</option></select> <span class="dsub">Job Flow berhenti di Antre Flow — agen menjalankan langkah browser-nya.</span></div>';
+  h+='<div class="cols"><div class="col"><div class="vsec">Produk terbaik (klik terbanyak)</div>'
+   +d.top_products.map(function(t,i){return '<div class="bar-row"><span class="rnk">'+(i+1)+'</span><span class="clip" title="'+esc(t.name||'')+'">'+esc(t.name||'(tanpa nama)')+'</span><span class="cnt">'+t.clicks+'</span><button class="btn" data-vgen="'+t.item_id+'">🎬 Generate</button></div>'}).join('')+'</div>';
+  h+='<div class="col"><div class="vsec">Produk baru (manual)</div><div class="rename"><input id="vurl" placeholder="Link produk Shopee"><input id="vname" placeholder="Nama produk"><button class="btn" id="vcreate">Buat job video AI</button></div>';
+  h+='<div class="vsec">Antrean job <button class="btn2" id="vrefresh">Muat ulang</button></div><table class="vtab"><tr><th>#</th><th>Produk</th><th>Backend</th><th>Status</th><th></th></tr>'
+   +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td><div class="clip" title="'+esc(j.product_name)+'">'+esc(j.product_name)+'</div></td><td>'+(j.backend||'flow')+(j.credits_used?' <span class="dsub">('+j.credits_used+' kredit)</span>':'')+'</td><td>'+pill(j.status)+(j.error?'<div class="verr">'+esc(j.error.slice(0,90))+'</div>':'')+'</td><td>'
+   +(j.status==='done'&&j.package_item_id?'<button class="btn2" data-open="'+j.package_item_id+'">Lihat di antrean</button>':(j.status==='failed'||j.status==='pending'?'<button class="btn2" data-vrun="'+j.id+'">Jalankan</button>':''))+'</td></tr>'}).join('')+'</table></div></div>';
   el.innerHTML=h;
   el.querySelectorAll('[data-vgen]').forEach(function(b){b.addEventListener('click',function(){
    const be=($('#vbackend')||{}).value||'flow';
