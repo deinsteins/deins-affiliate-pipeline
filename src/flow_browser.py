@@ -40,6 +40,28 @@ ALLOWED_HOSTS = {"labs.google", "flow.google.com", "flow.google",
                  "myaccount.google.com", "google.com", "www.google.com"}
 
 
+def _ensure_xvfb():
+    """Run a virtual display for HEADED Chromium (Xvfb :99).
+
+    Headless browsers fail Google's sign-in integrity check at auth
+    time ("This browser or app may not be secure") even when the
+    sign-in form itself loads. A headed browser on a virtual display
+    looks like a normal desktop Chrome. Reused across restarts; the
+    dashboard service runs as root, so the socket dir is writable."""
+    import subprocess
+    if os.path.exists("/tmp/.X99-lock"):
+        os.environ["DISPLAY"] = ":99"
+        return
+    subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1280x800x24"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    import time
+    for _ in range(20):
+        if os.path.exists("/tmp/.X99-lock"):
+            break
+        time.sleep(0.5)
+    os.environ["DISPLAY"] = ":99"
+
+
 class _BrowserThread(threading.Thread):
     def __init__(self):
         super().__init__(daemon=True)
@@ -50,9 +72,10 @@ class _BrowserThread(threading.Thread):
     def run(self):
         from playwright.sync_api import sync_playwright
         import os
+        _ensure_xvfb()
         exe = _browser_exe()
         with sync_playwright() as pw:
-            kwargs = dict(headless=True, proxy={"server": PROXY},
+            kwargs = dict(headless=False, proxy={"server": PROXY},
                           ignore_https_errors=True, viewport=VIEWPORT,
                           # Hide the automation flag: Google sign-in
                           # rejects browsers that advertise automation
@@ -73,6 +96,18 @@ class _BrowserThread(threading.Thread):
             self.ctx.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', "
                 "{get: () => undefined});")
+            # playwright-stealth: patches the remaining fingerprint
+            # tells (plugins, chrome runtime, permissions, languages).
+            # Applied to the main page and any page opened later.
+            try:
+                from playwright_stealth import Stealth
+                _stealth = Stealth()
+                for _pg in self.ctx.pages:
+                    _stealth.apply_stealth_sync(_pg)
+                self.ctx.on("page",
+                            lambda _pg: _stealth.apply_stealth_sync(_pg))
+            except Exception:  # noqa: BLE001 - stealth is best-effort
+                pass
             self.page = self.ctx.pages[0] if self.ctx.pages \
                 else self.ctx.new_page()
             while True:
