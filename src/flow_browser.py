@@ -90,47 +90,69 @@ class _BrowserThread(threading.Thread):
         self.page = None
         self.ctx = None
 
+    def _launch(self, pw):
+        """(Re)create context+page with all stealth setup applied."""
+        import os
+        kwargs = dict(headless=False, proxy={"server": PROXY},
+                      ignore_https_errors=True, viewport=VIEWPORT,
+                      # Hide the automation flag: Google sign-in
+                      # rejects browsers that advertise automation
+                      # (its generic symptom is the "Cookies are
+                      # disabled" page). The owner still logs in
+                      # with their own hands; this only makes the
+                      # browser look like a normal Chrome.
+                      args=["--disable-blink-features="
+                            "AutomationControlled"])
+        exe = _browser_exe()
+        if exe:
+            kwargs["executable_path"] = exe
+        ctx = pw.chromium.launch_persistent_context(
+            str(PROFILE_DIR), **kwargs)
+        # Same reason as above: navigator.webdriver is the
+        # clearest automation tell. Applied before any page
+        # navigation, so every sign-in page load sees a normal
+        # browser.
+        ctx.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', "
+            "{get: () => undefined});")
+        # playwright-stealth: patches the remaining fingerprint
+        # tells (plugins, chrome runtime, permissions, languages).
+        # Applied to the main page and any page opened later.
+        try:
+            from playwright_stealth import Stealth
+            _stealth = Stealth()
+            for _pg in ctx.pages:
+                _stealth.apply_stealth_sync(_pg)
+            ctx.on("page",
+                   lambda _pg: _stealth.apply_stealth_sync(_pg))
+        except Exception:  # noqa: BLE001 - stealth is best-effort
+            pass
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        return ctx, page
+
+    def _relaunch(self, pw):
+        """Recover from a dead browser process (e.g. a Chromium crash
+        left the thread answering every request with TargetClosed
+        while the page stayed blank). Same profile dir, so a login
+        session survives the crash; stale Singleton locks cleared."""
+        try:
+            self.ctx.close()
+        except Exception:  # noqa: BLE001 - already dead
+            pass
+        import glob
+        for _lock in glob.glob(str(PROFILE_DIR / "Singleton*")):
+            try:
+                os.remove(_lock)
+            except OSError:  # noqa: BLE001 - already gone
+                pass
+        self.ctx, self.page = self._launch(pw)
+
     def run(self):
         from playwright.sync_api import sync_playwright
         import os
         _ensure_xvfb()
-        exe = _browser_exe()
         with sync_playwright() as pw:
-            kwargs = dict(headless=False, proxy={"server": PROXY},
-                          ignore_https_errors=True, viewport=VIEWPORT,
-                          # Hide the automation flag: Google sign-in
-                          # rejects browsers that advertise automation
-                          # (its generic symptom is the "Cookies are
-                          # disabled" page). The owner still logs in
-                          # with their own hands; this only makes the
-                          # browser look like a normal Chrome.
-                          args=["--disable-blink-features="
-                                "AutomationControlled"])
-            if exe:
-                kwargs["executable_path"] = exe
-            self.ctx = pw.chromium.launch_persistent_context(
-                str(PROFILE_DIR), **kwargs)
-            # Same reason as above: navigator.webdriver is the
-            # clearest automation tell. Applied before any page
-            # navigation, so every sign-in page load sees a normal
-            # browser.
-            self.ctx.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', "
-                "{get: () => undefined});")
-            # playwright-stealth: patches the remaining fingerprint
-            # tells (plugins, chrome runtime, permissions, languages).
-            # Applied to the main page and any page opened later.
-            try:
-                from playwright_stealth import Stealth
-                _stealth = Stealth()
-                for _pg in self.ctx.pages:
-                    _stealth.apply_stealth_sync(_pg)
-                self.ctx.on("page",
-                            lambda _pg: _stealth.apply_stealth_sync(_pg))
-            except Exception:  # noqa: BLE001 - stealth is best-effort
-                pass
-            self.page = self.ctx.pages[0] if self.ctx.pages \
-                else self.ctx.new_page()
+            self.ctx, self.page = self._launch(pw)
             while True:
                 fn, fut = self.q.get()
                 if fn is None:
@@ -138,7 +160,15 @@ class _BrowserThread(threading.Thread):
                 try:
                     fut.set_result(fn(self.page))
                 except Exception as e:  # noqa: BLE001 - to caller
-                    fut.set_exception(e)
+                    msg = str(e).lower()
+                    if "closed" in msg or "target" in type(e).__name__.lower():
+                        try:
+                            self._relaunch(pw)
+                            fut.set_result(fn(self.page))
+                        except Exception as e2:  # noqa: BLE001
+                            fut.set_exception(e2)
+                    else:
+                        fut.set_exception(e)
 
     def submit(self, fn):
         fut: Future = Future()
