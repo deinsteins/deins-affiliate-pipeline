@@ -81,7 +81,7 @@ button,input{font-size:15px;padding:8px 12px;border-radius:8px;border:1px solid 
 button{cursor:pointer} #status{font-weight:600} .muted{color:#666;font-size:13px}
 #msg{color:#b00;min-height:1em}
 </style></head><body>
-<h2>🔑 Login Google / Flow</h2>
+<h2>Login Google / Flow</h2>
 <div class="card"><p>Ini <b>layar browser server</b> — bukan browser HP kamu. Klik di gambar = klik di browser server, ketik di kolom lalu Kirim = mengetik di browser server. Jadi kamu bisa login ke akun Google sendiri di halaman asli Google (termasuk kode 2FA kalau diminta).</p>
 <p class="muted">Yang diketik diteruskan ke browser saja — <b>tidak disimpan, tidak dicatat</b> di server. Halaman ini hanya boleh membuka situs Google (Flow + login). Setelah status menunjukkan sudah login, sesi tersimpan di profil browser server dan dipakai untuk generate video Flow.</p>
 <p>Status: <span id="status">…</span> · <span id="url" class="muted"></span></p>
@@ -89,12 +89,12 @@ button{cursor:pointer} #status{font-weight:600} .muted{color:#666;font-size:13px
 <p id="msg"></p></div>
 <div class="card"><img id="shot" src="/flow-login/shot.png" alt="layar browser server">
 <p><input id="txt" placeholder="ketik di sini (mis. email / kode 2FA)" style="width:60%"> <button onclick="sendText()">Kirim</button>
-<button onclick="sendKey('Enter')">Enter ⏎</button> <button onclick="sendKey('Tab')">Tab ⇥</button> <button onclick="sendKey('Escape')">Esc</button></p>
+<button onclick="sendKey('Enter')">Enter</button> <button onclick="sendKey('Tab')">Tab</button> <button onclick="sendKey('Escape')">Esc</button></p>
 <p class="muted">Klik gambar dulu untuk fokus ke kolom yang benar di halaman Google, baru ketik. Kalau gambar belum berubah, tunggu 1–2 detik lalu Refresh gambar.</p></div>
 <script>
 const $=id=>document.getElementById(id);
 async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function refreshStatus(){try{const d=await fetch('/api/flow-login/status').then(r=>r.json());$('status').textContent=d.logged_in?'✅ SUDAH LOGIN':'🔒 BELUM LOGIN';$('url').textContent=d.url||'';}catch(e){$('msg').textContent='status gagal: '+e.message;}}
+async function refreshStatus(){try{const d=await fetch('/api/flow-login/status').then(r=>r.json());$('status').textContent=d.logged_in?'SUDAH LOGIN':'BELUM LOGIN';$('url').textContent=d.url||'';}catch(e){$('msg').textContent='status gagal: '+e.message;}}
 async function refreshShot(){ $('shot').src='/flow-login/shot.png?t='+Date.now(); }
 async function goFlow(){try{await api('/api/flow-login/goto',{url:'https://labs.google/fx/tools/flow'});refreshShot();refreshStatus();}catch(e){$('msg').textContent=e.message;}}
 async function sendText(){const t=$('txt').value;if(!t)return;try{await api('/api/flow-login/type',{text:t});$('txt').value='';setTimeout(refreshShot,900);}catch(e){$('msg').textContent=e.message;}}
@@ -720,7 +720,7 @@ function cardHTML(it){
  +'<div class="cb"><div class="name">'+(esc(it.display_name)||'(nama belum terdeteksi)')+'</div>'
  +'<div class="meta"><span>#'+it.id+'</span><span>'+esc(it.channel)+'</span>'
  +'<span class="pill '+(it.region==='MY'?'my':'id')+'">'+(it.region||'')+'</span>'
- +(it.affiliate_url?'<span class="pill approved">link ✓</span>':'')
+ +(it.affiliate_url?'<span class="pill approved">link afiliasi</span>':'')
  +'<span class="pill '+it.review+'">'+it.review+'</span></div>'
  +(wait?'<div class="cap wait">Menunggu caption worker…</div>':'<div class="cap">'+esc(it.yt_title||'')+'</div>')
  +'<div class="row"><button class="ok" data-act="approved" data-id="'+it.id+'">Setujui</button>'
@@ -770,11 +770,11 @@ function renderDrawer(){
  +'<span class="pill '+it.review+'">'+it.review+'</span>'
  +'<span class="pill '+(it.region==='MY'?'my':'id')+'">'+(it.region==='MY'?'Malaysia':'Indonesia')+'</span>'
  +'<span class="mono">'+esc(it.created||'')+'</span>'
- +'<button class="x" data-close="1">✕</button></div><div class="dbody">'
+ +'<button class="x" data-close="1">×</button></div><div class="dbody">'
  +(it.has_video?'<video controls preload="metadata" poster="'+(it.has_thumb?'/thumb/'+it.id:'')+'" src="/media/'+it.id+'"></video>':'')
  +'<div class="dname">'+(esc(it.display_name)||'Nama produk belum terdeteksi')+'</div>'
  +'<div class="dsub">dari channel <b>'+esc(it.channel)+'</b> · status paket: '+esc(it.status)+'</div>'
- +'<div class="rename" id="renamebox"><button data-rename="'+it.id+'">✏️ Ubah nama produk</button></div>'
+ +'<div class="rename" id="renamebox"><button data-rename="'+it.id+'">Ubah nama produk</button></div>'
  +'<a class="linkbtn" href="'+esc(it.product_url)+'" target="_blank" rel="noopener">Buka produk di Shopee ↗</a>'
  +'<div class="affbox"><b>Shortlink (yang dipasang di caption)</b>'
  +'<div><a href="'+esc(it.shortlink)+'" target="_blank" rel="noopener">'+esc(it.shortlink)+'</a></div>'
@@ -814,7 +814,7 @@ function analytics(){
   const cats=a.categories.slice().sort(function(x,y){return y.clicks-x.clicks});
   const maxCat=cats.length?Math.max.apply(null,cats.map(function(x){return x.clicks})):0;
   const topCat=cats.length&&cats[0].clicks>0?cats[0].category:'—';
-  let h='<h3>📊 Analitik</h3><div class="dsub">Klik shortlink per item + kategori produk yang paling laku. Views/likes platform muncul setelah ada video yang terposting.</div>';
+  let h='<h3>Analitik</h3><div class="dsub">Klik shortlink per item + kategori produk yang paling laku. Views/likes platform muncul setelah ada video yang terposting.</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+a.clicks_30d+'</b><span>klik · 30 hari terakhir</span></div><div class="kpi"><b>'+a.clicks_total+'</b><span>klik · total</span></div><div class="kpi"><b>'+esc(topCat)+'</b><span>kategori teratas</span></div></div>';
   h+='<div class="cols"><div class="col"><div class="vsec">Item teratas</div>';
   if(a.top_items.length){
@@ -828,9 +828,9 @@ function analytics(){
   const seen={};
   const plats=[['YouTube','youtube'],['Facebook','facebook'],['Threads','threads']].map(function(p){
     const v=pf[p[1]]||pf[p[0]];
-    if(v){seen[p[1]]=1;seen[p[0]]=1;return '<span class="pill ok">'+p[0]+' 👁 '+v.views+' ♥ '+v.likes+'</span>'}
+    if(v){seen[p[1]]=1;seen[p[0]]=1;return '<span class="pill ok">'+p[0]+' · views '+v.views+' · likes '+v.likes+'</span>'}
     return '<span class="pill mut">'+p[0]+' · belum terhubung</span>'}).join('');
-  const extra=Object.keys(pf).filter(function(k){return !seen[k]}).map(function(k){return '<span class="pill ok">'+esc(k)+' 👁 '+pf[k].views+' ♥ '+pf[k].likes+'</span>'}).join('');
+  const extra=Object.keys(pf).filter(function(k){return !seen[k]}).map(function(k){return '<span class="pill ok">'+esc(k)+' · views '+pf[k].views+' · likes '+pf[k].likes+'</span>'}).join('');
   h+='<div class="plats">'+plats+extra+'</div>';
   if(!a.shortlink_base){h+='<div class="notice"><b>Shortlink belum punya domain publik tetap.</b> Saat ini domain-nya ikut tunnel dashboard yang berubah tiap VM restart — set PUBLIC_BASE_URL di .env ke URL tunnel terbaru (atau domain sendiri nanti) supaya shortlink yang diposting tidak basi.</div>';}
   el.innerHTML=h;
@@ -917,11 +917,11 @@ function vgen(){
     if(st==='queued_flow')return '<span class="pill warn">Antre Flow</span>';
     if(st==='pending')return '<span class="pill mut">Menunggu</span>';
     return '<span class="pill run">Proses</span>';};
-  let h='<h3>🎬 Video AI</h3><div class="dsub">Video produk otomatis dari produk terlaris (klik shortlink) atau dari link manual — hasilnya masuk antrean approve seperti biasa.</div>';
+  let h='<h3>Video AI</h3><div class="dsub">Video produk otomatis dari produk terlaris (klik shortlink) atau dari link manual — hasilnya masuk antrean approve seperti biasa.</div>';
   h+='<div class="meterbox"><div class="meter-top"><b>Kredit Flow bulan ini</b><span>'+used+' / '+budget+'</span></div><div class="meter"><i style="width:'+pct+'%"></i></div><div class="dsub" style="margin-top:8px">1 video (4 scene Fast) ≈ 80 kredit · <a href="/flow-login" target="_blank">login Google untuk Flow</a> · Veo API bayar per detik (butuh GEMINI_API_KEY), script butuh router hidup.</div></div>';
   h+='<div class="rename">Backend: <select id="vbackend"><option value="flow" selected>Flow (kredit Pro)</option><option value="veo">Veo API (bayar)</option></select> <span class="dsub">Job Flow berhenti di Antre Flow — agen menjalankan langkah browser-nya.</span></div>';
   h+='<div class="cols"><div class="col"><div class="vsec">Produk terbaik (klik terbanyak)</div>'
-   +d.top_products.map(function(t,i){return '<div class="bar-row"><span class="rnk">'+(i+1)+'</span><span class="clip" title="'+esc(t.name||'')+'">'+esc(t.name||'(tanpa nama)')+'</span><span class="cnt">'+t.clicks+'</span><button class="btn" data-vgen="'+t.item_id+'">🎬 Generate</button></div>'}).join('')+'</div>';
+   +d.top_products.map(function(t,i){return '<div class="bar-row"><span class="rnk">'+(i+1)+'</span><span class="clip" title="'+esc(t.name||'')+'">'+esc(t.name||'(tanpa nama)')+'</span><span class="cnt">'+t.clicks+'</span><button class="btn" data-vgen="'+t.item_id+'">Generate</button></div>'}).join('')+'</div>';
   h+='<div class="col"><div class="vsec">Produk baru (manual)</div><div class="rename"><input id="vurl" placeholder="Link produk Shopee"><input id="vname" placeholder="Nama produk"><button class="btn" id="vcreate">Buat job video AI</button></div>';
   h+='<div class="vsec">Antrean job <button class="btn2" id="vrefresh">Muat ulang</button></div><table class="vtab"><tr><th>#</th><th>Produk</th><th>Backend</th><th>Status</th><th></th></tr>'
    +d.jobs.map(function(j){return '<tr><td>'+j.id+'</td><td><div class="clip" title="'+esc(j.product_name)+'">'+esc(j.product_name)+'</div></td><td>'+(j.backend||'flow')+(j.credits_used?' <span class="dsub">('+j.credits_used+' kredit)</span>':'')+'</td><td>'+pill(j.status)+(j.error?'<div class="verr">'+esc(j.error.slice(0,90))+'</div>':'')+'</td><td>'
